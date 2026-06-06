@@ -1,0 +1,152 @@
+{% extends "agent/base.html" %}
+{% load static %}
+
+{% block title %}BurgerPrintsAgent - AI Fulfillment Advisor{% endblock %}
+
+{% block content %}
+<!-- Header -->
+<header class="header">
+    <div class="header-inner">
+        <div class="logo">
+            <div class="logo-icon">🍔</div>
+            <div class="logo-text">
+                <span class="logo-title">BurgerPrints</span>
+                <span class="logo-sub">AI Advisor</span>
+            </div>
+        </div>
+        <div class="header-actions">
+            <a href="{% url 'graph' %}" class="header-graph-link" title="Graph Visualization">📊 Graph</a>
+            <div class="status-dot" id="status-indicator" title="Kết nối API"></div>
+            <span class="status-label" id="status-label">Đang kết nối...</span>
+        </div>
+    </div>
+</header>
+
+<!-- Main layout -->
+<main class="main-layout">
+
+    <!-- Sidebar: Quick filters -->
+    <aside class="sidebar">
+        <div class="sidebar-section">
+            <h3 class="sidebar-title">🚀 Gợi ý nhanh</h3>
+            <div class="quick-prompts" id="quick-prompts">
+                <button class="quick-btn" data-prompt="Tôi muốn bán áo thun cho thị trường Mỹ">🇺🇸 Thị trường Mỹ</button>
+                <button class="quick-btn" data-prompt="Tôi muốn ship sang Đức nhanh nhất">🇩🇪 Ship EU nhanh nhất</button>
+                <button class="quick-btn" data-prompt="So sánh Gildan 5000 và Gildan 64000">⚖️ So sánh G5000 vs G64000</button>
+                <button class="quick-btn" data-prompt="Tôi mới bán POD. Nên bắt đầu với sản phẩm nào?">🌱 Mới bán POD</button>
+                <button class="quick-btn" data-prompt="Sản phẩm nào dùng công nghệ DTG tốt nhất?">🖨️ DTG tốt nhất</button>
+                <button class="quick-btn" data-prompt="Sản phẩm này còn hàng không?">📦 Kiểm tra tồn kho</button>
+            </div>
+        </div>
+
+        <div class="sidebar-section">
+            <h3 class="sidebar-title">📊 Bộ lọc</h3>
+            <div class="filter-group">
+                <label class="filter-label">Location</label>
+                <div class="filter-tags">
+                    <span class="filter-tag active" data-filter="location" data-value="">Tất cả</span>
+                    <span class="filter-tag" data-filter="location" data-value="US">🇺🇸 US</span>
+                    <span class="filter-tag" data-filter="location" data-value="EU">🇪🇺 EU</span>
+                    <span class="filter-tag" data-filter="location" data-value="China">🇨🇳 China</span>
+                </div>
+            </div>
+            <div class="filter-group">
+                <label class="filter-label">Print Method</label>
+                <div class="filter-tags">
+                    <span class="filter-tag active" data-filter="print" data-value="">Tất cả</span>
+                    <span class="filter-tag" data-filter="print" data-value="DTG">DTG</span>
+                    <span class="filter-tag" data-filter="print" data-value="Sublimation">Sub</span>
+                    <span class="filter-tag" data-filter="print" data-value="AOP">AOP</span>
+                </div>
+            </div>
+            <div class="filter-group">
+                <label class="filter-label">Lead Time</label>
+                <div class="filter-tags">
+                    <span class="filter-tag active" data-filter="lead" data-value="999">Tất cả</span>
+                    <span class="filter-tag" data-filter="lead" data-value="5">⚡ 1-5 ngày</span>
+                    <span class="filter-tag" data-filter="lead" data-value="10">🔵 ≤10 ngày</span>
+                </div>
+            </div>
+        </div>
+
+        <div class="sidebar-section">
+            <h3 class="sidebar-title">💬 Phiên hiện tại</h3>
+            <div class="session-info">
+                <span class="session-id" id="session-display">{{ session_id|truncatechars:12 }}...</span>
+                <button class="btn-new-chat" id="btn-new-chat" title="Tạo phiên mới">🔄 Phiên mới</button>
+            </div>
+        </div>
+    </aside>
+
+    <!-- Chat area -->
+    <section class="chat-section">
+        <!-- Messages container -->
+        <div class="messages-container" id="messages-container">
+            <!-- Welcome message -->
+            <div class="message-group assistant-group" id="welcome-msg">
+                <div class="avatar">🍔</div>
+                <div class="message-content">
+                    <div class="message-bubble assistant-bubble">
+                        <p>Xin chào! Tôi là <strong>BurgerPrintsAgent</strong> - AI Fulfillment Advisor của bạn. 🎉</p>
+                        <p>Tôi có thể giúp bạn:</p>
+                        <ul>
+                            <li>🔍 <strong>Tìm sản phẩm</strong> phù hợp theo thị trường và yêu cầu</li>
+                            <li>⚖️ <strong>So sánh sản phẩm</strong> về location, lead time, material</li>
+                            <li>📦 <strong>Kiểm tra tồn kho</strong> và đề xuất sản phẩm thay thế</li>
+                            <li>📝 <strong>Tư vấn</strong> sản phẩm tốt nhất cho seller mới</li>
+                        </ul>
+                        <p>Hãy hỏi tôi bằng tiếng Việt tự nhiên nhé! 🚀</p>
+                    </div>
+                    <span class="message-time">Vừa xong</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Product cards area (appears below messages for product results) -->
+        <div class="product-cards-area" id="product-cards-area" style="display:none;">
+            <div class="product-cards-header">
+                <span class="product-cards-title" id="product-cards-title">Sản phẩm đề xuất</span>
+                <span class="product-count" id="product-count"></span>
+            </div>
+            <div class="product-cards-grid" id="product-cards-grid"></div>
+        </div>
+
+        <!-- Chat input -->
+        <div class="chat-input-area">
+            <div class="input-wrapper">
+                <textarea
+                    id="chat-input"
+                    class="chat-input"
+                    placeholder="Hỏi tôi về sản phẩm BurgerPrints... (VD: Tôi muốn bán áo thun cho thị trường Mỹ)"
+                    rows="1"
+                    maxlength="500"
+                ></textarea>
+                <div class="input-actions">
+                    <span class="char-count" id="char-count">0/500</span>
+                    <button class="send-btn" id="send-btn" title="Gửi (Enter)">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                            <path d="M22 2L11 13M22 2L15 22 11 13 2 9l20-7z"/>
+                        </svg>
+                    </button>
+                </div>
+            </div>
+            <p class="input-hint">Enter để gửi · Shift+Enter xuống dòng</p>
+        </div>
+    </section>
+
+</main>
+
+<!-- Loading overlay -->
+<div class="loading-overlay" id="loading-overlay" style="display:none;">
+    <div class="loading-card">
+        <div class="loading-spinner"></div>
+        <p class="loading-text" id="loading-text">Đang truy vấn catalog...</p>
+    </div>
+</div>
+
+<!-- Toast notification -->
+<div class="toast" id="toast"></div>
+
+<!-- Hidden data -->
+<input type="hidden" id="session-id-input" value="{{ session_id }}">
+{% endblock %}

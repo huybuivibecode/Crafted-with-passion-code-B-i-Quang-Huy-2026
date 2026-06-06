@@ -1,0 +1,8 @@
+{
+  "code": 200,
+  "message": "success",
+  "data": {
+    "is_success": true,
+    "message": "The API key is valid."
+  }
+}

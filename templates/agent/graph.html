@@ -1,0 +1,680 @@
+{% extends "agent/base.html" %}
+{% load static %}
+
+{% block title %}BurgerPrints Agent - Graph View{% endblock %}
+
+{% block extra_head %}
+<!-- React + ReactFlow via CDN -->
+<script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+<script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+<script crossorigin src="https://unpkg.com/reactflow@11/dist/umd/index.js"></script>
+<link rel="stylesheet" href="https://unpkg.com/reactflow@11/dist/style.css" />
+<style>
+:root {
+  --graph-bg: #0D1117;
+  --graph-card: #161B22;
+  --graph-border: #30363D;
+  --graph-glow-ai: #7C3AED;
+  --graph-glow-api: #2563EB;
+  --graph-glow-algo: #059669;
+  --graph-glow-parser: #D97706;
+  --graph-glow-error: #EF4444;
+  --graph-glow-active: #22D3EE;
+  --graph-text: #E6EDF3;
+  --graph-muted: #8B949E;
+}
+
+html, body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  background: var(--graph-bg);
+  color: var(--graph-text);
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+}
+
+/* ── Layout ── */
+.graph-page {
+  display: flex;
+  height: 100vh;
+  overflow: hidden;
+}
+
+/* ── Left panel: query input + trace ── */
+.graph-sidebar {
+  width: 380px;
+  min-width: 340px;
+  display: flex;
+  flex-direction: column;
+  background: var(--graph-card);
+  border-right: 1px solid var(--graph-border);
+  z-index: 10;
+}
+
+.sidebar-header {
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--graph-border);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.sidebar-header h2 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+  background: linear-gradient(135deg, #7C3AED, #22D3EE);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.sidebar-header .nav-link {
+  margin-left: auto;
+  color: var(--graph-muted);
+  text-decoration: none;
+  font-size: 13px;
+  padding: 4px 10px;
+  border: 1px solid var(--graph-border);
+  border-radius: 6px;
+  transition: all 0.2s;
+}
+.sidebar-header .nav-link:hover {
+  border-color: var(--graph-glow-ai);
+  color: var(--graph-text);
+}
+
+/* Query input */
+.query-section {
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--graph-border);
+}
+
+.query-input-wrap {
+  display: flex;
+  gap: 8px;
+}
+
+.query-input {
+  flex: 1;
+  background: var(--graph-bg);
+  border: 1px solid var(--graph-border);
+  border-radius: 8px;
+  padding: 10px 14px;
+  color: var(--graph-text);
+  font-size: 13px;
+  outline: none;
+  transition: border-color 0.2s;
+}
+
+.query-input:focus {
+  border-color: var(--graph-glow-ai);
+}
+
+.query-input::placeholder {
+  color: var(--graph-muted);
+}
+
+.run-btn {
+  padding: 10px 18px;
+  background: linear-gradient(135deg, #7C3AED, #6D28D9);
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+  white-space: nowrap;
+}
+
+.run-btn:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 15px rgba(124,58,237,0.4);
+}
+
+.run-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Trace list */
+.trace-section {
+  flex: 1;
+  overflow-y: auto;
+  padding: 12px 20px;
+}
+
+.trace-section h3 {
+  margin: 0 0 12px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--graph-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.trace-empty {
+  color: var(--graph-muted);
+  font-size: 13px;
+  text-align: center;
+  padding: 40px 20px;
+}
+
+.trace-item {
+  background: var(--graph-bg);
+  border: 1px solid var(--graph-border);
+  border-radius: 10px;
+  padding: 12px 14px;
+  margin-bottom: 8px;
+  cursor: pointer;
+  transition: all 0.2s;
+  position: relative;
+}
+
+.trace-item:hover {
+  border-color: var(--graph-glow-active);
+  transform: translateX(2px);
+}
+
+.trace-item.active {
+  border-color: var(--graph-glow-active);
+  box-shadow: 0 0 12px rgba(34,211,238,0.15);
+}
+
+.trace-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.trace-label {
+  font-size: 13px;
+  font-weight: 600;
+  flex: 1;
+}
+
+.trace-method {
+  font-size: 10px;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 4px;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+
+.trace-method.ai {
+  background: rgba(124,58,237,0.2);
+  color: #A78BFA;
+}
+.trace-method.rule-based, .trace-method.fallback {
+  background: rgba(234,179,8,0.2);
+  color: #FCD34D;
+}
+.trace-method.api {
+  background: rgba(37,99,235,0.2);
+  color: #60A5FA;
+}
+.trace-method.algorithm, .trace-method.algo {
+  background: rgba(5,150,105,0.2);
+  color: #6EE7B7;
+}
+.trace-method.validator {
+  background: rgba(14,165,233,0.2);
+  color: #7DD3FC;
+}
+.trace-method.parser {
+  background: rgba(217,119,6,0.2);
+  color: #FCD34D;
+}
+.trace-method.error {
+  background: rgba(239,68,68,0.2);
+  color: #FCA5A5;
+}
+.trace-method.unknown {
+  background: rgba(139,148,158,0.2);
+  color: #8B949E;
+}
+
+.trace-timing {
+  font-size: 11px;
+  color: var(--graph-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.trace-summary {
+  font-size: 12px;
+  color: var(--graph-muted);
+  margin-top: 6px;
+  line-height: 1.4;
+}
+
+.trace-error-msg {
+  font-size: 12px;
+  color: #FCA5A5;
+  margin-top: 4px;
+}
+
+/* Status badge */
+.trace-status {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.trace-status.success { background: #22C55E; }
+.trace-status.error { background: #EF4444; }
+
+/* Total timing */
+.trace-total {
+  padding: 12px 14px;
+  background: var(--graph-bg);
+  border: 1px solid var(--graph-border);
+  border-radius: 10px;
+  margin-top: 12px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.trace-total-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--graph-muted);
+}
+
+.trace-total-value {
+  font-size: 16px;
+  font-weight: 700;
+  background: linear-gradient(135deg, #22D3EE, #7C3AED);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+/* Node detail panel */
+.node-detail {
+  background: var(--graph-bg);
+  border: 1px solid var(--graph-glow-active);
+  border-radius: 10px;
+  margin-top: 12px;
+  overflow: hidden;
+  animation: slideUp 0.25s ease;
+}
+
+@keyframes slideUp {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.detail-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--graph-border);
+  background: rgba(34,211,238,0.05);
+}
+
+.detail-header h4 {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: #22D3EE;
+}
+
+.detail-close {
+  background: none;
+  border: 1px solid var(--graph-border);
+  color: var(--graph-muted);
+  width: 24px;
+  height: 24px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s;
+}
+
+.detail-close:hover {
+  border-color: var(--graph-glow-error);
+  color: #FCA5A5;
+}
+
+.detail-meta {
+  padding: 8px 14px;
+  font-size: 11px;
+  color: var(--graph-muted);
+  border-bottom: 1px solid var(--graph-border);
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.detail-meta span {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.detail-output {
+  padding: 10px 14px;
+  margin: 0;
+  font-size: 11px;
+  font-family: 'JetBrains Mono', 'Fira Code', monospace;
+  color: var(--graph-text);
+  background: transparent;
+  max-height: 300px;
+  overflow-y: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+  line-height: 1.5;
+  scrollbar-width: thin;
+  scrollbar-color: var(--graph-border) transparent;
+}
+
+/* ── Right panel: ReactFlow ── */
+.graph-canvas {
+  flex: 1;
+  position: relative;
+}
+
+/* Response preview at bottom */
+.response-preview {
+  position: absolute;
+  bottom: 16px;
+  left: 16px;
+  right: 16px;
+  background: rgba(22,27,34,0.95);
+  border: 1px solid var(--graph-border);
+  border-radius: 12px;
+  padding: 14px 18px;
+  max-height: 160px;
+  overflow-y: auto;
+  font-size: 13px;
+  line-height: 1.5;
+  backdrop-filter: blur(10px);
+  z-index: 5;
+  display: none;
+}
+
+.response-preview.show { display: block; }
+
+.response-preview h4 {
+  margin: 0 0 8px;
+  font-size: 12px;
+  color: var(--graph-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+/* ── ReactFlow custom node styles ── */
+.rf-custom-node {
+  padding: 10px 16px;
+  border-radius: 10px;
+  border: 1.5px solid var(--graph-border);
+  background: var(--graph-card);
+  min-width: 140px;
+  text-align: center;
+  transition: all 0.3s;
+  cursor: pointer;
+}
+
+.rf-custom-node:hover {
+  transform: scale(1.04);
+}
+
+.rf-custom-node.type-llm {
+  border-color: rgba(124,58,237,0.5);
+  box-shadow: 0 0 15px rgba(124,58,237,0.1);
+}
+
+.rf-custom-node.type-api {
+  border-color: rgba(37,99,235,0.5);
+  box-shadow: 0 0 15px rgba(37,99,235,0.1);
+}
+
+.rf-custom-node.type-algo {
+  border-color: rgba(5,150,105,0.5);
+  box-shadow: 0 0 15px rgba(5,150,105,0.1);
+}
+
+.rf-custom-node.type-parser {
+  border-color: rgba(217,119,6,0.5);
+  box-shadow: 0 0 15px rgba(217,119,6,0.1);
+}
+
+.rf-custom-node.type-start, .rf-custom-node.type-end {
+  border-color: rgba(139,148,158,0.5);
+  border-radius: 20px;
+  min-width: 100px;
+}
+
+/* Active states */
+.rf-custom-node.status-active {
+  border-color: var(--graph-glow-active) !important;
+  box-shadow: 0 0 20px rgba(34,211,238,0.3) !important;
+  animation: pulse-glow 1.5s ease-in-out infinite;
+}
+
+.rf-custom-node.status-success.type-llm {
+  border-color: #7C3AED;
+  box-shadow: 0 0 20px rgba(124,58,237,0.3);
+}
+.rf-custom-node.status-success.type-api {
+  border-color: #2563EB;
+  box-shadow: 0 0 20px rgba(37,99,235,0.3);
+}
+.rf-custom-node.status-success.type-algo {
+  border-color: #059669;
+  box-shadow: 0 0 20px rgba(5,150,105,0.3);
+}
+.rf-custom-node.status-success.type-parser {
+  border-color: #D97706;
+  box-shadow: 0 0 20px rgba(217,119,6,0.3);
+}
+
+.rf-custom-node.status-error {
+  border-color: #EF4444 !important;
+  box-shadow: 0 0 20px rgba(239,68,68,0.3) !important;
+}
+
+.rf-custom-node.status-skipped {
+  opacity: 0.35;
+}
+
+@keyframes pulse-glow {
+  0%, 100% { box-shadow: 0 0 20px rgba(34,211,238,0.15); }
+  50% { box-shadow: 0 0 30px rgba(34,211,238,0.4); }
+}
+
+.rf-node-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--graph-text);
+  margin-bottom: 2px;
+}
+
+.rf-node-method {
+  font-size: 9px;
+  font-weight: 700;
+  padding: 1px 6px;
+  border-radius: 3px;
+  text-transform: uppercase;
+  display: inline-block;
+  margin-top: 4px;
+}
+
+.rf-node-method.ai { background: rgba(124,58,237,0.3); color: #A78BFA; }
+.rf-node-method.rule-based, .rf-node-method.fallback { background: rgba(234,179,8,0.3); color: #FCD34D; }
+.rf-node-method.api { background: rgba(37,99,235,0.3); color: #60A5FA; }
+.rf-node-method.algorithm { background: rgba(5,150,105,0.3); color: #6EE7B7; }
+.rf-node-method.validator { background: rgba(14,165,233,0.3); color: #7DD3FC; }
+.rf-node-method.parser { background: rgba(217,119,6,0.3); color: #FCD34D; }
+.rf-node-method.error { background: rgba(239,68,68,0.3); color: #FCA5A5; }
+
+.rf-node-timing {
+  font-size: 10px;
+  color: var(--graph-muted);
+  margin-top: 3px;
+}
+
+/* React Flow overrides */
+.react-flow__background {
+  background: var(--graph-bg) !important;
+}
+
+.react-flow__edge-path {
+  stroke: var(--graph-border) !important;
+  stroke-width: 2 !important;
+}
+
+.react-flow__edge.animated .react-flow__edge-path {
+  stroke: var(--graph-glow-active) !important;
+  stroke-dasharray: 5 !important;
+  animation: dash 1s linear infinite !important;
+}
+
+@keyframes dash {
+  to { stroke-dashoffset: -10; }
+}
+
+.react-flow__edge-text {
+  font-size: 10px !important;
+  fill: var(--graph-muted) !important;
+}
+
+.react-flow__controls {
+  background: var(--graph-card) !important;
+  border: 1px solid var(--graph-border) !important;
+  border-radius: 8px !important;
+  box-shadow: 0 4px 15px rgba(0,0,0,0.3) !important;
+}
+
+.react-flow__controls-button {
+  background: var(--graph-card) !important;
+  border-bottom: 1px solid var(--graph-border) !important;
+  fill: var(--graph-muted) !important;
+}
+
+.react-flow__controls-button:hover {
+  background: var(--graph-bg) !important;
+}
+
+.react-flow__minimap {
+  background: var(--graph-card) !important;
+  border: 1px solid var(--graph-border) !important;
+  border-radius: 8px !important;
+}
+
+/* Legend */
+.graph-legend {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  background: rgba(22,27,34,0.95);
+  border: 1px solid var(--graph-border);
+  border-radius: 10px;
+  padding: 12px 16px;
+  z-index: 5;
+  backdrop-filter: blur(10px);
+}
+
+.graph-legend h4 {
+  margin: 0 0 8px;
+  font-size: 11px;
+  color: var(--graph-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.legend-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 4px;
+  font-size: 11px;
+  color: var(--graph-muted);
+}
+
+.legend-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+  flex-shrink: 0;
+}
+
+.legend-dot.llm { background: #7C3AED; }
+.legend-dot.api { background: #2563EB; }
+.legend-dot.algo { background: #059669; }
+.legend-dot.parser { background: #D97706; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="graph-page">
+  <!-- Left sidebar -->
+  <div class="graph-sidebar">
+    <div class="sidebar-header">
+      <h2>🍔 BurgerPrints Graph</h2>
+      <a href="{% url 'chat' %}" class="nav-link">← Chat</a>
+    </div>
+
+    <div class="query-section">
+      <div class="query-input-wrap">
+        <input type="text" class="query-input" id="graph-query"
+               placeholder="Nhập câu hỏi để chạy graph..."
+               value="Tôi muốn bán áo thun cho thị trường Mỹ" />
+        <button class="run-btn" id="run-btn">▶ Run</button>
+      </div>
+    </div>
+
+    <div class="trace-section" id="trace-section">
+      <h3>Execution Trace</h3>
+      <div class="trace-empty" id="trace-empty">
+        Nhấn <strong>▶ Run</strong> để chạy graph<br/>và xem kết quả từng node
+      </div>
+      <div id="trace-list"></div>
+
+      <!-- Node detail panel -->
+      <div id="node-detail" class="node-detail" style="display:none;">
+        <div class="detail-header">
+          <h4 id="detail-title"></h4>
+          <button class="detail-close" id="detail-close">✕</button>
+        </div>
+        <div class="detail-meta" id="detail-meta"></div>
+        <pre class="detail-output" id="detail-output"></pre>
+      </div>
+    </div>
+  </div>
+
+  <!-- Right: ReactFlow canvas -->
+  <div class="graph-canvas" id="graph-canvas">
+    <!-- Legend -->
+    <div class="graph-legend">
+      <h4>Node Types</h4>
+      <div class="legend-item"><div class="legend-dot llm"></div> LLM (Gemini)</div>
+      <div class="legend-item"><div class="legend-dot api"></div> API Call</div>
+      <div class="legend-item"><div class="legend-dot algo"></div> Algorithm</div>
+      <div class="legend-item"><div class="legend-dot parser"></div> Parser</div>
+    </div>
+
+    <!-- Response preview -->
+    <div class="response-preview" id="response-preview">
+      <h4>💬 Agent Response</h4>
+      <div id="response-content"></div>
+    </div>
+  </div>
+</div>
+
+<input type="hidden" id="session-id-input" value="{{ session_id }}" />
+
+<!-- Graph data from Django -->
+<script>
+window.GRAPH_DEF = {{ graph_def|safe }};
+</script>
+
+<!-- Graph logic (no JSX, no Babel needed) -->
+<script src="{% static 'js/graph.js' %}"></script>
+{% endblock %}
