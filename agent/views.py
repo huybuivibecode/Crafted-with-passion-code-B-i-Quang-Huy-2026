@@ -3,6 +3,7 @@ Django REST API Views cho BurgerPrintsAgent
 """
 import uuid
 import json
+import re
 import logging
 
 from django.shortcuts import render
@@ -20,6 +21,7 @@ from agent.graph.graph import GRAPH_DEFINITION
 from agent.zorin import handle_chat
 from agent.services import burgerprints as bp_api
 from agent.services.html_parser import normalize_product
+from agent.services.catalog_store import normalize_catalog_product
 from agent.services.catalog_cache import get_cache_stats, invalidate_products_cache, invalidate_oos_cache
 
 logger = logging.getLogger(__name__)
@@ -82,7 +84,24 @@ class ChatAPIView(APIView):
         # Khi không → chỉ gửi top 5 cho UI product cards
         criteria = result.get("extracted_criteria") or {}
         list_all = bool(criteria.get("list_all", False))
-        product_limit = 200 if list_all else 5
+        requested_count = 0
+        try:
+            m = re.search(r"\b(\d{1,3})\b\s*(?:sản\s*phẩm|sp)\b", (query or "").lower())
+            if m:
+                requested_count = int(m.group(1))
+        except Exception:
+            requested_count = 0
+
+        if requested_count > 0 and intent == "recommend_product":
+            product_limit = min(requested_count, 200)
+        elif list_all:
+            product_limit = 200
+        elif intent == "catalog_info":
+            product_limit = 20
+        elif intent == "recommend_product" and 0 < requested_count <= 50:
+            product_limit = requested_count
+        else:
+            product_limit = 5
         products = _serialize_scores(scores_raw)[:product_limit]
 
         winner = _serialize_product(result.get("winner"))
@@ -135,7 +154,7 @@ class ProductDetailAPIView(APIView):
     def get(self, request, product_id):
         try:
             data = bp_api.get_product_detail(product_id)
-            return Response(normalize_product(data))
+            return Response(normalize_catalog_product(data))
         except Exception as e:
             return Response({"error": str(e)}, status=status.HTTP_502_BAD_GATEWAY)
 

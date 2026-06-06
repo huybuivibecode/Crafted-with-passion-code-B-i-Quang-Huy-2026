@@ -128,8 +128,14 @@
         <!-- Product cards area -->
         <div class="product-cards-area" id="product-cards-area" style="display:none;">
             <div class="product-cards-header">
-                <span class="product-cards-title" id="product-cards-title">Sản phẩm đề xuất</span>
-                <span class="product-count" id="product-count"></span>
+                <div class="product-cards-header-left">
+                    <span class="product-cards-title" id="product-cards-title">Sản phẩm đề xuất</span>
+                    <span class="product-count" id="product-count"></span>
+                </div>
+                <div class="product-cards-header-actions">
+                    <button class="header-toggle" id="toggle-products-btn" type="button">Ẩn gợi ý</button>
+                    <button class="header-toggle" id="toggle-partner-colors-btn" type="button">Ẩn màu theo partner</button>
+                </div>
             </div>
             <div class="product-cards-grid" id="product-cards-grid"></div>
         </div>
@@ -174,6 +180,31 @@
 
 <!-- Toast notification -->
 <div class="toast" id="toast"></div>
+
+<!-- Partner Colors Modal -->
+<div class="modal-overlay" id="partner-colors-modal" style="display:none;">
+    <div class="partner-colors-card">
+        <div class="partner-colors-header">
+            <div class="partner-colors-title" id="partner-colors-title">🎨 Màu theo partner</div>
+            <button class="modal-close" id="partner-colors-close-btn" type="button">✕</button>
+        </div>
+        <div class="partner-colors-body" id="partner-colors-body"></div>
+    </div>
+</div>
+
+<!-- Color Preview Modal -->
+<div class="modal-overlay" id="color-preview-modal" style="display:none;">
+    <div class="color-preview-card">
+        <div class="color-preview-header">
+            <div class="color-preview-title">🎨 Màu sắc</div>
+            <button class="modal-close" id="color-preview-close-btn" type="button">✕</button>
+        </div>
+        <div class="color-preview-body">
+            <div class="color-preview-swatch" id="color-preview-swatch"></div>
+            <div class="color-preview-hex" id="color-preview-hex"></div>
+        </div>
+    </div>
+</div>
 
 <!-- Order Modal -->
 <div class="modal-overlay" id="order-modal" style="display:none;">

@@ -231,6 +231,63 @@ CHÚ Ý:
             if not criteria.get("skus"):
                 criteria["skus"] = extract_skus_from_names(criteria.get("product_names", []))
 
+            q = (query or "").strip()
+            q_lower = q.lower()
+
+            m = re.search(r"\b(\d{1,3})\b\s*(?:sản\s*phẩm|sp)\b", q_lower)
+            requested_count = int(m.group(1)) if m else 0
+            if requested_count > 0:
+                criteria["list_all"] = False
+
+            if not (criteria.get("location_preference") or "").strip():
+                if any(x in q_lower for x in ["thị trường mỹ", "thi truong my", "mỹ", "my", "us", "usa", "united states"]):
+                    criteria["location_preference"] = "US"
+
+            if result.intent == "compare_product":
+                product_names = [x for x in (criteria.get("product_names") or []) if x]
+                if len(product_names) == 1:
+                    one = product_names[0].lower()
+                    for sep in [" vs ", " vs. ", " với ", " so với ", " và ", " compare ", " versus "]:
+                        if sep in one:
+                            parts = [
+                                p.strip()
+                                for p in re.split(r"\bvs\.?\b|\bvới\b|\bso với\b|\bvà\b|\bversus\b", product_names[0], flags=re.IGNORECASE)
+                                if p.strip()
+                            ]
+                            if len(parts) >= 2:
+                                criteria["product_names"] = parts[:2]
+                                break
+                if len((criteria.get("product_names") or [])) < 2 and any(x in q_lower for x in [" so sánh ", "so sánh", "compare", " vs ", " với ", " so với ", " versus "]):
+                    for sep in [" so sánh ", "compare "]:
+                        if q_lower.startswith(sep):
+                            q_tail = q[len(sep):].strip()
+                            q_lower = q.lower()
+                            break
+                    else:
+                        q_tail = q
+                    q_tail_lower = q_tail.lower()
+                    for sep in [" với ", " vs ", " vs. ", " so với ", " và ", " versus "]:
+                        idx = q_tail_lower.find(sep)
+                        if idx >= 0:
+                            left = q_tail[:idx].strip()
+                            right = q_tail[idx + len(sep):].strip()
+                            if left and right:
+                                criteria["product_names"] = [left, right]
+                            break
+
+            if "phân tích" in q_lower or "phan tich" in q_lower or "chi tiết" in q_lower or "chi tiet" in q_lower:
+                if result.intent == "compare_product" and not any(x in q_lower for x in ["so sánh", "compare", "vs"]):
+                    result.intent = "recommend_product"
+
+                if not criteria.get("product_names"):
+                    m = re.search(r"(?:phân tích|phan tich)(?:\s+chi\s*tiết|\s+chi\s*tiet|\s+kỹ\s+hơn|\s+ky\s+hon)?\s*(.+)$", q_lower)
+                    if m:
+                        name = (m.group(1) or "").strip()
+                        if name:
+                            criteria["product_names"] = [name]
+                            if not criteria.get("skus"):
+                                criteria["skus"] = extract_skus_from_names(criteria.get("product_names", []))
+
             logger.info(f"IntentAnalyzer: intent={result.intent}, catalog_type={result.catalog_query_type}, summary={result.summary}")
 
             return {

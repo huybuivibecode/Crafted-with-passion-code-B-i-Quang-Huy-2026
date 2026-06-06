@@ -240,13 +240,36 @@ def _handle_catalog_info(state: AgentState) -> AgentState:
             products_norm=products_norm,
             query=query,
         )
-        return {**state, "response_msg": response}
+        scores = state.get("scores", []) or []
+        if not scores:
+            terms = _extract_catalog_focus_terms(query)
+            if terms:
+                matched = []
+                for p in products_norm:
+                    name = (p.get("name") or "").lower()
+                    if name and all(t in name for t in terms):
+                        matched.append(p)
+                if matched:
+                    scores = [{"product": p, "score": 0, "breakdown": {}, "evidence": {}} for p in matched]
+
+        return {**state, "response_msg": response, "scores": scores}
     except Exception as e:
         logger.error(f"CatalogInfoResponder error: {e}")
         return {
             **state,
             "response_msg": f"❌ Không thể lấy thông tin catalog: {e}. Vui lòng thử lại.",
         }
+
+
+def _extract_catalog_focus_terms(query: str) -> list:
+    q = (query or "").lower()
+    if "crewneck" in q and "sweatshirt" in q:
+        return ["crewneck", "sweatshirt"]
+    if "sweatshirt" in q:
+        return ["sweatshirt"]
+    if "hoodie" in q:
+        return ["hoodie"]
+    return []
 
 
 def _apply_criteria_filters(state: AgentState) -> AgentState:
@@ -263,8 +286,32 @@ def _apply_criteria_filters(state: AgentState) -> AgentState:
     filtered = list(candidates)
     original_count = len(filtered)
 
+    q = (state.get("query") or "").lower()
+
+    def _infer_location_pref() -> str:
+        loc_pref_raw = (criteria.get("location_preference") or "").strip()
+        if loc_pref_raw:
+            return loc_pref_raw
+        if any(x in q for x in ["thị trường mỹ", "thi truong my", "us", "usa", "united states", "mỹ", "my"]):
+            return "US"
+        if any(x in q for x in ["thị trường eu", "eu", "europe"]):
+            return "EU"
+        if "china" in q or "trung quốc" in q:
+            return "China"
+        if "vietnam" in q or "việt nam" in q or "viet nam" in q:
+            return "Vietnam"
+        return ""
+
+    def _is_tshirt_query() -> bool:
+        if any(x in q for x in ["áo thun", "ao thun", "t-shirt", "tshirt", "tee"]):
+            return True
+        for pn in (criteria.get("product_names") or []):
+            if any(x in (pn or "").lower() for x in ["t-shirt", "tshirt", "tee", "áo thun", "ao thun"]):
+                return True
+        return False
+
     # Filter theo location
-    loc_pref = (criteria.get("location_preference") or "").strip().upper()
+    loc_pref = _infer_location_pref().strip().upper()
     if loc_pref:
         loc_filtered = [
             p for p in filtered
@@ -273,6 +320,35 @@ def _apply_criteria_filters(state: AgentState) -> AgentState:
         if loc_filtered:
             filtered = loc_filtered
             logger.info(f"[Filter] location={loc_pref}: {original_count} → {len(filtered)}")
+
+    if _is_tshirt_query():
+        include_terms = ["t-shirt", "tshirt", "tee"]
+        exclude_terms = ["hoodie", "sweatshirt", "crewneck", "tank", "long sleeve", "raglan", "polo", "mug", "poster", "tote", "bag", "cap", "hat", "beanie", "jogger", "pant", "short"]
+        tshirt_filtered = []
+        for p in filtered:
+            name = (p.get("name") or "").lower()
+            if not name:
+                continue
+            if any(t in name for t in exclude_terms):
+                continue
+            if any(t in name for t in include_terms):
+                tshirt_filtered.append(p)
+        if tshirt_filtered:
+            filtered = tshirt_filtered
+            logger.info(f"[Filter] type=tshirt: → {len(filtered)}")
+
+    product_names = [x for x in (criteria.get("product_names") or []) if x]
+    if product_names and len(product_names) == 1 and any(x in q for x in ["phân tích", "phan tich", "chi tiết", "chi tiet", "kỹ hơn", "ky hon"]):
+        token = (product_names[0] or "").strip().lower()
+        if token:
+            specific = [
+                p for p in filtered
+                if token in (p.get("name", "") or "").lower()
+                or token in (p.get("short_code", "") or "").lower()
+            ]
+            if specific:
+                filtered = specific
+                logger.info(f"[Filter] product_name={product_names[0]}: → {len(filtered)}")
 
     # Filter theo partner
     partner_prefs = [p.strip() for p in (criteria.get("partner_preference") or []) if p]
@@ -295,7 +371,12 @@ def _apply_criteria_filters(state: AgentState) -> AgentState:
         color_filtered = [
             p for p in filtered
             if any(
-                any(cp in (col or "").lower() for cp in color_prefs)
+                any(
+                    cp in (
+                        ((col.get("name") or "") if isinstance(col, dict) else (col or ""))
+                    ).lower()
+                    for cp in color_prefs
+                )
                 for col in (p.get("available_colors") or [])
             )
         ]

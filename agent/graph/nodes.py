@@ -871,17 +871,26 @@ def generate_response_node(state: AgentState) -> AgentState:
             "reasons": [],
         }
 
-    response = _build_deterministic_response(
-        query=query,
-        intent=intent,
-        scores=scores,
-        reasons=reasons,
-        criteria=criteria,
-        compare_products=compare_products,
-        alternatives=alternatives,
-        out_of_stock_ids=out_of_stock_ids,
-        validation_errors=validation_errors,
-    )
+    try:
+        response = _build_deterministic_response(
+            query=query,
+            intent=intent,
+            scores=scores,
+            reasons=reasons,
+            criteria=criteria,
+            compare_products=compare_products,
+            alternatives=alternatives,
+            out_of_stock_ids=out_of_stock_ids,
+            validation_errors=validation_errors,
+        )
+    except Exception:
+        response = ""
+
+    if not response:
+        top = scores[0].get("product", {}) if scores else {}
+        label = top.get("name") or top.get("short_code") or "sản phẩm này"
+        response = f"Mình chưa kết xuất được phần giải thích so sánh. Bạn thử hỏi: `Phân tích chi tiết {label}` hoặc `So sánh [SP1] với [SP2]`."
+
     return {**state, "response_msg": response}
 
 
@@ -897,11 +906,76 @@ def _build_deterministic_response(
     validation_errors: list,
 ) -> str:
     """Compose a safe markdown response from canonical product data only."""
+    criteria = criteria if isinstance(criteria, dict) else {}
+    def _extract_requested_count(text: str) -> int:
+        q = (text or "").lower()
+        m = re.search(r"\b(\d{1,3})\b\s*(?:sản\s*phẩm|sp)\b", q)
+        if m:
+            try:
+                return int(m.group(1))
+            except Exception:
+                return 0
+        m = re.search(r"\b(?:top|best)\s*(\d{1,3})\b", q)
+        if m:
+            try:
+                return int(m.group(1))
+            except Exception:
+                return 0
+        return 0
+
+    def _format_filters(criteria_dict: dict) -> str:
+        if not isinstance(criteria_dict, dict):
+            criteria_dict = {}
+        parts = []
+        loc_val = (criteria_dict.get("location_preference") or "").strip()
+        if loc_val:
+            parts.append(f"📍 {loc_val.upper()}")
+        pm_val = (criteria_dict.get("print_method") or "").strip()
+        if pm_val:
+            parts.append(f"🖨️ {pm_val}")
+        max_lead_val = criteria_dict.get("max_lead_time", 999)
+        if isinstance(max_lead_val, int) and 0 < max_lead_val < 999:
+            parts.append(f"⏱️ ≤{max_lead_val} ngày")
+        max_price_val = criteria_dict.get("max_price", 9999.0)
+        try:
+            max_price_val = float(max_price_val)
+        except Exception:
+            max_price_val = 9999.0
+        if 0 < max_price_val < 9999.0:
+            parts.append(f"💵 ≤${max_price_val:g}")
+        partner_prefs = [p for p in (criteria_dict.get("partner_preference") or []) if p]
+        if partner_prefs:
+            parts.append(f"🏭 {', '.join(partner_prefs[:2])}{'…' if len(partner_prefs) > 2 else ''}")
+        color_prefs = [c for c in (criteria_dict.get("color_preference") or []) if c]
+        if color_prefs:
+            parts.append(f"🎨 {', '.join(color_prefs[:2])}{'…' if len(color_prefs) > 2 else ''}")
+        return " · ".join(parts)
     def _escape_table_cell(value) -> str:
         text = "" if value is None else str(value)
         text = text.replace("\r", " ").replace("\n", " ").strip()
         text = text.replace("|", "\\|")
         return text or "?"
+
+    def _as_float(value, default: float = 0.0) -> float:
+        try:
+            if value is None or value == "":
+                return default
+            return float(value)
+        except Exception:
+            return default
+
+    def _color_names(colors) -> list:
+        names = []
+        for c in (colors or []):
+            if not c:
+                continue
+            if isinstance(c, str):
+                names.append(c.strip())
+            elif isinstance(c, dict):
+                n = (c.get("name") or "").strip()
+                if n:
+                    names.append(n)
+        return [x for x in names if x]
 
     loc = criteria.get("location_preference", "")
     max_lead = criteria.get("max_lead_time", 999)
@@ -913,7 +987,10 @@ def _build_deterministic_response(
 
     # ── Compare product intent ──
     if intent == "compare_product":
-        norm_cp = compare_products[:3] if compare_products else [item.get("product", {}) for item in scores[:3]]
+        requested_count = _extract_requested_count(query)
+        requested_count = requested_count if 0 < requested_count <= 4 else 0
+        max_items = requested_count or 3
+        norm_cp = compare_products[:max_items] if compare_products else [item.get("product", {}) for item in scores[:max_items]]
         if not norm_cp:
             return "❌ Không tìm thấy sản phẩm để so sánh. Vui lòng cung cấp tên/mã sản phẩm rõ ràng hơn."
 
@@ -926,13 +1003,15 @@ def _build_deterministic_response(
                 score_by_code[code] = item
 
         # Build comparison table
+        filters_line = _format_filters(criteria)
         lines = [
             "## ⚖️ So sánh sản phẩm",
             "",
-            f"*Theo yêu cầu: \"{query}\"*",
+            f"Mình đang so sánh theo yêu cầu: *\"{query}\"*",
+            (f"*Bộ lọc đang áp dụng:* {filters_line}" if filters_line else ""),
             "",
             "| Tiêu chí | " + " | ".join(
-                f"**{p.get('name', '?')}**<br/><code>{p.get('short_code', '?')}</code>"
+                f"**{_escape_table_cell(p.get('name', '?'))}**<br/><code>{_escape_table_cell(p.get('short_code', '?'))}</code>"
                 for p in norm_cp
             ) + " |",
             "|---|---" + "|---" * (len(norm_cp) - 1) + "|",
@@ -970,8 +1049,8 @@ def _build_deterministic_response(
         # Price comparison
         price_lines = []
         for p in norm_cp:
-            price_min = p.get("price_min", 0.0)
-            price_max = p.get("price_max", 0.0)
+            price_min = _as_float(p.get("price_min", 0.0), 0.0)
+            price_max = _as_float(p.get("price_max", 0.0), 0.0)
             if price_min == price_max:
                 price_str = f"${price_min:.2f}"
             else:
@@ -982,10 +1061,11 @@ def _build_deterministic_response(
         # Colors comparison
         color_lines = []
         for p in norm_cp:
-            colors = p.get("available_colors", []) or []
-            if colors:
-                color_str = f"{len(colors)} màu"
-                sample = ", ".join(sorted(colors)[:2])
+            colors_raw = p.get("available_colors", []) or []
+            names = _color_names(colors_raw)
+            if names:
+                color_str = f"{len(names)} màu"
+                sample = ", ".join(sorted(names)[:2])
                 if sample:
                     color_str += f" ({sample})"
             else:
@@ -1023,14 +1103,9 @@ def _build_deterministic_response(
             winner = scores[0].get("product", {})
             winner_code = winner.get("short_code", "?")
             winner_name = winner.get("name", "?")
-            lines.append(f"**🏆 Kết luận:** `{winner_code}` ({winner_name}) thắng vì có tổng điểm cao nhất dựa trên market, season, inventory, margin và demand signals.")
+            lines.append(f"**🏆 Kết luận nhanh:** `{winner_code}` (**{winner_name}**) là lựa chọn nổi bật nhất theo điểm tổng.")
             lines.append("")
-            lines.append("**📊 Chi tiết so sánh:**")
-            lines.append("- **Market Fit:** Phù hợp với thị trường mục tiêu")
-            lines.append("- **Season Fit:** Tối ưu theo mùa hiện tại")
-            lines.append("- **Margin Score:** Lợi nhuận trên mỗi đơn hàng")
-            lines.append("- **Inventory:** Tình trạng tồn kho")
-            lines.append("- **Trend:** Xu hướng hiện tại")
+            lines.append("Nếu bạn muốn, mình có thể so sánh sâu hơn theo **giá**, **màu**, hoặc **partner** (vd: chỉ lấy partner Spire).")
         else:
             lines.append("**📊 So sánh dựa trên thông số cơ bản:**")
             lines.append("- **Location:** Địa điểm fulfillment")
@@ -1039,10 +1114,7 @@ def _build_deterministic_response(
             lines.append("- **Print Method:** Công nghệ in")
             lines.append("- **Partners:** Đối tác fulfillment")
 
-        lines.append("")
-        lines.append("💡 **Gợi ý:** Bạn có thể yêu cầu so sánh theo partner cụ thể, màu sắc, hoặc khoảng giá.")
-
-        return "\n".join(lines)
+        return "\n".join([x for x in lines if x != ""])
 
     # ── Check stock intent ──
     if intent == "check_stock":
@@ -1064,13 +1136,18 @@ def _build_deterministic_response(
         return "❌ Không tìm thấy sản phẩm phù hợp với yêu cầu. Vui lòng thử với tiêu chí khác."
 
     list_all = criteria.get("list_all", False)
+    requested_count = _extract_requested_count(query)
+    requested_count = requested_count if 0 < requested_count <= 50 else 0
+    filters_line = _format_filters(criteria)
 
     # Header theo query
     loc_label = f"thị trường **{loc}**" if loc else "nhu cầu của bạn"
     fast_label = f", giao hàng trong **≤{max_lead} ngày**" if max_lead < 999 else ""
-    header = f"## 🏆 Sản phẩm có xác suất bán tốt nhất cho {loc_label}{fast_label}\n\n*Dựa trên câu hỏi: \"{query}\"*"
+    header = f"## 🔍 Gợi ý sản phẩm phù hợp cho {loc_label}{fast_label}\n\nMình vừa truy xuất catalog theo yêu cầu: *\"{query}\"*"
     if header_notes:
         header += "\n" + "\n".join(header_notes)
+    if filters_line:
+        header += f"\n\n*Bộ lọc đang áp dụng:* {filters_line}"
     header += "\n"
 
     # ── List All Mode: bảng markdown đầy đủ ──
@@ -1102,33 +1179,59 @@ def _build_deterministic_response(
         lines.append(f"💡 **Bạn muốn phân tích chi tiết sản phẩm nào?** Hỏi: `Phân tích chi tiết [tên SP]` hoặc `So sánh [SP1] với [SP2]`")
         return "\n".join(lines)
 
+    if requested_count >= 4:
+        n = min(requested_count, len(scores))
+        lines = [
+            header,
+            f"*Mình chọn ra **{n}** sản phẩm đáng thử nhất (xếp theo score):*",
+            "",
+        ]
+        for rank, item in enumerate(scores[:n], 1):
+            p = item["product"]
+            score = item["score"]
+            name = p.get("name", "N/A")
+            sku = p.get("short_code", "N/A")
+            loc_val = p.get("location", "?")
+            pm = p.get("print_method", "?")
+            price = p.get("suggested_selling_price", 0)
+            price_str = f"${price:.2f}" if price else "—"
+            colors_cnt = p.get("colors_count", 0) or (len(p.get("available_colors") or []) if isinstance(p.get("available_colors"), list) else 0)
+            partners_cnt = len(p.get("partners") or []) if isinstance(p.get("partners"), list) else 0
+            meta = [f"{loc_val}", f"{pm}"]
+            if colors_cnt:
+                meta.append(f"{int(colors_cnt)} màu")
+            if partners_cnt:
+                meta.append(f"{partners_cnt} partner")
+            meta_str = " · ".join(meta)
+            lines.append(f"{rank}) **{name}** (`{sku}`) — **{score:.0f}/100**")
+            lines.append(f"   - {meta_str} · Giá gợi ý: **{price_str}**")
+
+        reason_section = ""
+        if reasons:
+            reason_section = "\n\n**✅ Lý do đề xuất sản phẩm #1:**\n" + "\n".join(f"- {r}" for r in reasons)
+
+        cta = "\n\n💬 Bạn muốn mình ưu tiên **dòng rẻ dễ test** hay **dòng premium** trong list này? (Mình sẽ rút tiếp còn 5 mẫu phù hợp nhất)."
+        return "\n".join(lines) + reason_section + cta
+
     # ── Top 3 Mode: card chi tiết (mặc định) ──
     product_lines = []
     for rank, item in enumerate(scores[:3], 1):
         p = item["product"]
         score = item["score"]
-        breakdown = item.get("breakdown", {})
         medals = ["🥇", "🥈", "🥉"]
         medal = medals[rank - 1]
-        product_lines.append(f"{medal} **{p.get('name', 'N/A')}** (`{p.get('short_code', 'N/A')}`) — Score: {score:.0f}/100")
-        product_lines.append(f"   - 📈 Trend: **{breakdown.get('trend', 0):.0f}/100** | Market fit: **{breakdown.get('market_fit', 0):.0f}/100** | Season fit: **{breakdown.get('season_fit', 0):.0f}/100**")
-        product_lines.append(f"   - 💰 Margin: **{p.get('margin', 0):.1f}%** | Profit/order: **${p.get('profit', 0):.2f}** | ROI: **{p.get('roi', 0):.0f}%**")
-        product_lines.append(f"   - 📦 Inventory: **{p.get('inventory_status', 'unknown')}**")
-        product_lines.append(f"   - 📍 Location: **{p.get('location', '?')}**")
-        product_lines.append(f"   - ⏱️ Processing: **{p.get('processing_time', '?')}**")
-        product_lines.append(f"   - 🧵 Material: {p.get('material', '?')}")
-        product_lines.append(f"   - 🖨️ Print: {p.get('print_method', '?')}")
-        product_lines.append(f"   - 🎯 Audience: **{p.get('recommended_audience', 'General Gift Buyers')}**")
-        if p.get("suggested_selling_price"):
-            product_lines.append(f"   - 💰 Suggested selling price: **${p.get('suggested_selling_price'):.2f}**")
+        product_lines.append(f"{medal} **{p.get('name', 'N/A')}** (`{p.get('short_code', 'N/A')}`) — **{score:.0f}/100**")
+        product_lines.append(f"   - � {p.get('location', '?')} · ⏱️ {p.get('processing_time', '?')} · 🖨️ {p.get('print_method', '?')}")
+        product_lines.append(f"   - 💰 Giá gợi ý: **${p.get('suggested_selling_price', 0):.2f}** · Lợi nhuận/đơn: **${p.get('profit', 0):.2f}** · ROI: **{p.get('roi', 0):.0f}%**")
+        product_lines.append(f"   - 🎯 Hợp với: **{p.get('recommended_audience', 'General Gift Buyers')}**")
         risks = p.get("risks") or []
         if risks:
-            product_lines.append(f"   - ⚠️ Risks: {', '.join(risks[:3])}")
+            product_lines.append(f"   - ⚠️ Lưu ý: {', '.join(risks[:3])}")
 
     # Hiển thị số sản phẩm còn lại nếu có nhiều hơn 3
     more_section = ""
     if len(scores) > 3:
-        more_section = f"\n\n**📋 Còn {len(scores) - 3} sản phẩm khác phù hợp.** Hỏi `cho tôi toàn bộ sản phẩm kho China` để xem đầy đủ dưới dạng bảng."
+        more_section = f"\n\nNếu bạn muốn mình liệt kê nhiều hơn, cứ nhắn: **\"cho tôi 10 sản phẩm\"**, **\"cho tôi 15 sản phẩm\"** hoặc **\"list all\"**."
 
     # Lý do chọn #1
     reason_section = ""
@@ -1136,6 +1239,6 @@ def _build_deterministic_response(
         reason_section = "\n\n**✅ Lý do đề xuất sản phẩm #1:**\n" + "\n".join(f"- {r}" for r in reasons)
 
     # CTA
-    cta = "\n\n💬 Bạn muốn xem thêm chi tiết, so sánh sản phẩm, hoặc tạo đơn hàng không?"
+    cta = "\n\n💬 Bạn muốn mình chốt **5 mẫu best-seller** theo hướng **giá rẻ dễ scale** hay **premium bán giá cao**?"
 
     return header + "\n".join(product_lines) + more_section + reason_section + cta

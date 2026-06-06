@@ -7,6 +7,11 @@
 const state = {
   sessionId: document.getElementById('session-id-input')?.value || crypto.randomUUID(),
   isLoading: false,
+  ui: {
+    showProductSuggestions: true,
+    showPartnerColors: true,
+  },
+  partnerColorCache: {},
   activeFilters: {
     location: '',
     print: '',
@@ -27,12 +32,22 @@ const productCardsArea = document.getElementById('product-cards-area');
 const productCardsGrid = document.getElementById('product-cards-grid');
 const productCardsTitle = document.getElementById('product-cards-title');
 const productCount = document.getElementById('product-count');
+const btnToggleProducts = document.getElementById('toggle-products-btn');
+const btnTogglePartnerColors = document.getElementById('toggle-partner-colors-btn');
 const statusIndicator = document.getElementById('status-indicator');
 const statusLabel = document.getElementById('status-label');
 const toast = document.getElementById('toast');
 const btnNewChat = document.getElementById('btn-new-chat');
 const sessionDisplay = document.getElementById('session-display');
 const orderModal = document.getElementById('order-modal');
+const partnerColorsModal = document.getElementById('partner-colors-modal');
+const partnerColorsCloseBtn = document.getElementById('partner-colors-close-btn');
+const partnerColorsTitle = document.getElementById('partner-colors-title');
+const partnerColorsBody = document.getElementById('partner-colors-body');
+const colorPreviewModal = document.getElementById('color-preview-modal');
+const colorPreviewCloseBtn = document.getElementById('color-preview-close-btn');
+const colorPreviewSwatch = document.getElementById('color-preview-swatch');
+const colorPreviewHex = document.getElementById('color-preview-hex');
 const btnApplyFilter = document.getElementById('btn-apply-filter');
 const btnClearCache = document.getElementById('btn-clear-cache');
 const welcomeTemplate = document.getElementById('welcome-msg')?.outerHTML || '';
@@ -133,6 +148,51 @@ function setupEventListeners() {
     }
   });
 
+  btnToggleProducts?.addEventListener('click', () => {
+    state.ui.showProductSuggestions = !state.ui.showProductSuggestions;
+    applyProductSuggestionsVisibility();
+  });
+
+  btnTogglePartnerColors?.addEventListener('click', () => {
+    state.ui.showPartnerColors = !state.ui.showPartnerColors;
+    applyPartnerColorsVisibility();
+    if (state.ui.showPartnerColors) {
+      const first = Array.isArray(state.allProducts) ? state.allProducts[0] : null;
+      const productId = first?.id || first?.short_code || '';
+      if (productId) {
+        openPartnerColorsModal(productId, first?.name || '');
+      } else {
+        showToast('Chọn 1 sản phẩm để xem màu theo partner', 'info');
+      }
+    } else {
+      closePartnerColorsModal();
+    }
+  });
+
+  productCardsArea?.addEventListener('click', async (event) => {
+    const actionEl = event.target.closest('[data-card-action]');
+    if (actionEl) {
+      event.preventDefault();
+      event.stopPropagation();
+      const action = actionEl.dataset.cardAction;
+      const productId = actionEl.dataset.productId || '';
+
+      if (action === 'toggle-partner-colors') {
+        const product = state.allProducts.find((p) => (p.id || p.short_code) === productId) || {};
+        openPartnerColorsModal(productId, product?.name || '');
+      }
+      if (action === 'preview-color') {
+        openColorPreview(actionEl.dataset.colorHex || '');
+      }
+      return;
+    }
+
+    const card = event.target.closest('.product-card');
+    if (!card) return;
+    const productId = card.dataset.productId || '';
+    if (productId) showProductDetail(productId);
+  });
+
   // Message action delegation (copy, prompt, retry)
   messagesContainer?.addEventListener('click', async (event) => {
     const actionEl = event.target.closest('[data-action]');
@@ -171,6 +231,23 @@ function setupEventListeners() {
   document.getElementById('order-btn-prev')?.addEventListener('click', handleOrderPrev);
   orderModal?.addEventListener('click', (e) => {
     if (e.target === orderModal) closeOrderModal();
+  });
+
+  partnerColorsCloseBtn?.addEventListener('click', closePartnerColorsModal);
+  partnerColorsModal?.addEventListener('click', (e) => {
+    const actionEl = e.target.closest('[data-card-action="preview-color"]');
+    if (actionEl) {
+      e.preventDefault();
+      e.stopPropagation();
+      openColorPreview(actionEl.dataset.colorHex || '');
+      return;
+    }
+    if (e.target === partnerColorsModal) closePartnerColorsModal();
+  });
+
+  colorPreviewCloseBtn?.addEventListener('click', closeColorPreview);
+  colorPreviewModal?.addEventListener('click', (e) => {
+    if (e.target === colorPreviewModal) closeColorPreview();
   });
 }
 
@@ -639,11 +716,150 @@ function showProductCards(products, intent) {
       productCardsGrid.insertAdjacentHTML('beforeend', buildProductCard(product, index + 1));
     });
   }
+
+  applyProductSuggestionsVisibility();
+  applyPartnerColorsVisibility();
 }
 
 function hideProductCards() {
   if (productCardsArea) productCardsArea.style.display = 'none';
   if (productCardsGrid) productCardsGrid.innerHTML = '';
+}
+
+function applyProductSuggestionsVisibility() {
+  const show = Boolean(state.ui.showProductSuggestions);
+  if (productCardsGrid) productCardsGrid.style.display = show ? 'flex' : 'none';
+  if (btnToggleProducts) {
+    btnToggleProducts.textContent = show ? 'Ẩn gợi ý' : 'Hiện gợi ý';
+    btnToggleProducts.classList.toggle('active', !show);
+  }
+}
+
+function applyPartnerColorsVisibility() {
+  const show = Boolean(state.ui.showPartnerColors);
+  if (productCardsArea) productCardsArea.classList.toggle('partner-colors-hidden', !show);
+  if (btnTogglePartnerColors) {
+    btnTogglePartnerColors.textContent = show ? 'Ẩn màu theo partner' : 'Hiện màu theo partner';
+    btnTogglePartnerColors.classList.toggle('active', !show);
+  }
+}
+
+async function openPartnerColorsModal(productId, productName = '') {
+  if (!productId || !state.ui.showPartnerColors) return;
+  if (!partnerColorsModal || !partnerColorsBody) return;
+
+  if (partnerColorsTitle) {
+    const label = productName ? `${productName} (${productId})` : productId;
+    partnerColorsTitle.textContent = `🎨 Màu theo partner — ${label}`;
+  }
+
+  partnerColorsBody.innerHTML = '<div class="mini-partners-text">Đang tải màu theo partner…</div>';
+  partnerColorsModal.style.display = 'flex';
+
+  try {
+    const partnerColorMap = await getPartnerColorMap(productId);
+    renderPartnerColorsModal(partnerColorMap);
+  } catch {
+    partnerColorsBody.innerHTML = '<div class="mini-partners-text">Không tải được màu theo partner.</div>';
+  }
+}
+
+function closePartnerColorsModal() {
+  if (partnerColorsModal) partnerColorsModal.style.display = 'none';
+}
+
+async function getPartnerColorMap(productId) {
+  if (state.partnerColorCache[productId]) return state.partnerColorCache[productId];
+  const res = await fetch(`/api/products/${encodeURIComponent(productId)}/`, { method: 'GET' });
+  if (!res.ok) throw new Error('fetch_failed');
+  const detail = await res.json();
+  const map = buildPartnerColorMap(detail);
+  state.partnerColorCache[productId] = map;
+  return map;
+}
+
+function buildPartnerColorMap(detail) {
+  const variations = Array.isArray(detail?.variations) ? detail.variations : [];
+  const availableColors = Array.isArray(detail?.available_colors) ? detail.available_colors : [];
+  const colorHexByName = new Map();
+
+  availableColors.forEach((c) => {
+    if (!c) return;
+    if (typeof c === 'string') {
+      colorHexByName.set(String(c).trim().toLowerCase(), '');
+      return;
+    }
+    if (typeof c === 'object') {
+      const name = String(c.name || '').trim();
+      const hex = String(c.color_hex || '').trim();
+      if (name) colorHexByName.set(name.toLowerCase(), hex);
+    }
+  });
+
+  const byPartner = new Map();
+  variations.forEach((v) => {
+    if (!v || typeof v !== 'object') return;
+    const partner = String(v.partner_name || v.partner || '').trim();
+    const colorName = String(v.color || '').trim();
+    let hex = String(v.color_hex || '').trim();
+    if (!hex && colorName) hex = String(colorHexByName.get(colorName.toLowerCase()) || '').trim();
+    if (!partner || !hex) return;
+
+    if (!byPartner.has(partner)) byPartner.set(partner, new Map());
+    const key = hex.toLowerCase();
+    if (!byPartner.get(partner).has(key)) {
+      byPartner.get(partner).set(key, { name: colorName, hex });
+    }
+  });
+
+  const entries = Array.from(byPartner.entries())
+    .map(([partner, colorsMap]) => [partner, Array.from(colorsMap.values())])
+    .sort((a, b) => (b[1].length - a[1].length) || String(a[0]).localeCompare(String(b[0])));
+
+  return Object.fromEntries(entries);
+}
+
+function renderPartnerColorsModal(partnerColorMap) {
+  if (!partnerColorsBody) return;
+  const partners = Object.keys(partnerColorMap || {});
+  if (!partners.length) {
+    partnerColorsBody.innerHTML = '<div class="mini-partners-text">Chưa có dữ liệu màu theo partner cho sản phẩm này.</div>';
+    return;
+  }
+
+  const html = partners.map((partner) => {
+    const colors = Array.isArray(partnerColorMap[partner]) ? partnerColorMap[partner] : [];
+    const swatches = colors.slice(0, 60).map((c) => {
+      const hex = String(c?.hex || '').trim();
+      if (!hex) return '';
+      return `<button class="color-swatch" type="button" style="background:${escapeHtml(hex)}" title="${escapeHtml(hex)}" data-hex="${escapeHtml(hex)}" data-card-action="preview-color" data-color-hex="${escapeHtml(hex)}"></button>`;
+    }).join('');
+
+    return `
+      <div class="partner-row">
+        <div class="partner-row-header">
+          <div class="partner-row-title">${escapeHtml(partner)}</div>
+          <div class="partner-row-count">${colors.length} màu</div>
+        </div>
+        <div class="swatch-row">${swatches}</div>
+      </div>
+    `;
+  }).join('');
+
+  partnerColorsBody.innerHTML = html;
+}
+
+function openColorPreview(hex) {
+  const cleaned = String(hex || '').trim();
+  if (!cleaned || !/^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(cleaned)) return;
+  if (!colorPreviewModal || !colorPreviewSwatch || !colorPreviewHex) return;
+  colorPreviewSwatch.style.background = cleaned;
+  colorPreviewHex.textContent = cleaned.toUpperCase();
+  colorPreviewModal.style.display = 'flex';
+}
+
+function closeColorPreview() {
+  if (colorPreviewModal) colorPreviewModal.style.display = 'none';
 }
 
 function buildProductCard(product, rank) {
@@ -657,8 +873,15 @@ function buildProductCard(product, rank) {
   const profitInfo = product.profit
     ? `<div class="card-profit">💰 Lợi nhuận: $${Number(product.profit).toFixed(2)}/đơn</div>`
     : '';
+
+  const productId = product.id || product.short_code || '';
+  const partners = Array.isArray(product.partners) ? product.partners.filter(Boolean) : [];
+  const partnerText = partners.length ? partners.slice(0, 3).map(p => escapeHtml(p)).join(', ') : '';
+  const morePartners = partners.length > 3 ? ` (+${partners.length - 3})` : '';
+  const partnersHtml = partners.length ? `<div class="card-partners">🏭 ${partnerText}${morePartners}</div>` : '';
+
   return `
-    <div class="product-card" onclick="showProductDetail('${escapeJs(product.id || product.short_code || '')}')">
+    <div class="product-card" data-product-id="${escapeHtml(productId)}">
       <div class="card-rank">${rank}</div>
       ${thumbnail}
       <div class="card-name" title="${escapeHtml(product.name || '')}">${escapeHtml(product.name || 'N/A')}</div>
@@ -666,6 +889,10 @@ function buildProductCard(product, rank) {
       ${priceInfo}
       ${profitInfo}
       <div class="card-badges">${buildBadges(product)}</div>
+      ${partnersHtml}
+      <div class="card-actions">
+        <button class="card-action-btn" type="button" data-card-action="toggle-partner-colors" data-product-id="${escapeHtml(productId)}">🎨 Màu theo partner</button>
+      </div>
       <div class="card-score-bar">
         <div class="card-score-fill" style="width: ${scorePercent}%"></div>
       </div>

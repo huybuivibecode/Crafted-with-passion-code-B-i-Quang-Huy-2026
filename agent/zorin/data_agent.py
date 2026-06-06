@@ -4,7 +4,7 @@ import logging
 from typing import Any, Dict, List, Optional
 
 from agent.services import burgerprints as bp_api
-from agent.services.catalog_store import build_catalog_index, extract_out_of_stock_ids
+from agent.services.catalog_store import build_catalog_index, extract_out_of_stock_ids, normalize_catalog_product
 from agent.services.html_parser import normalize_product
 from agent.services.catalog_cache import (
     get_cached_products,
@@ -73,25 +73,64 @@ class DataAgent:
         compare_products: List[dict] = []
 
         def _clean(s: str) -> str:
-            return (s or "").lower().replace(" ", "").replace("-", "")
+            import re
+            return re.sub(r"[^a-z0-9]+", "", (s or "").lower())
 
-        wanted = [_clean(x) for x in (product_names or []) if x]
-        for product in products_raw:
-            name = (product.get("name", "") or product.get("shortCodeName", "") or "")
-            sku = product.get("short_code") or product.get("shortCode") or ""
-            name_clean = _clean(name)
-            sku_clean = _clean(sku)
-            for token in wanted:
+        wanted_raw = [x for x in (product_names or []) if x]
+        wanted = [_clean(x) for x in wanted_raw if x]
+
+        selected_skus: List[str] = []
+
+        for idx, token in enumerate(wanted):
+            best = None
+            best_score = -10**9
+            raw_token = (wanted_raw[idx] or "").lower()
+            want_kid = any(x in raw_token for x in ["kid", "kids", "youth", "toddler", "baby"])
+            want_women = any(x in raw_token for x in ["women", "woman", "lady", "ladies"])
+
+            for product in products_raw:
+                name = (product.get("name", "") or product.get("shortCodeName", "") or "")
+                sku = product.get("short_code") or product.get("shortCode") or ""
+                name_clean = _clean(name)
+                sku_clean = _clean(sku)
+
                 if not token:
                     continue
-                if token in name_clean or token in sku_clean or (sku_clean and sku_clean in token):
-                    try:
-                        detail = bp_api.get_product_detail(sku)
-                        payload = detail if isinstance(detail, dict) and detail else product
-                        compare_products.append(normalize_product(payload))
-                    except Exception:
-                        compare_products.append(normalize_product(product))
-                    break
+
+                score = 0
+                if sku_clean and token == sku_clean:
+                    score += 1000
+                if sku_clean and (token in sku_clean or sku_clean in token):
+                    score += 600
+                if token in name_clean:
+                    score += 450
+                if name_clean.startswith(token):
+                    score += 60
+
+                name_lower = (name or "").lower()
+                if any(x in name_lower for x in ["kid", "kids", "youth", "toddler", "baby"]) and not want_kid:
+                    score -= 250
+                if any(x in name_lower for x in ["women", "woman", "lady", "ladies"]) and not want_women:
+                    score -= 80
+
+                if score > best_score:
+                    best_score = score
+                    best = product
+
+            if best and best_score >= 400:
+                sku = best.get("short_code") or best.get("shortCode") or ""
+                if sku and sku not in selected_skus:
+                    selected_skus.append(sku)
+
+        if selected_skus:
+            for sku in selected_skus[:4]:
+                try:
+                    detail = bp_api.get_product_detail(sku)
+                    compare_products.append(normalize_catalog_product(detail))
+                except Exception:
+                    fallback = next((p for p in products_raw if (p.get("short_code") or p.get("shortCode")) == sku), None)
+                    if fallback:
+                        compare_products.append(normalize_product(fallback))
 
         if not compare_products and products_raw:
             compare_products = [normalize_product(p) for p in products_raw[:3]]
@@ -112,7 +151,7 @@ class DataAgent:
         """Lấy variations của một sản phẩm và lọc theo partner/color/price."""
         try:
             detail = bp_api.get_product_detail(product_short_code)
-            variations = detail.get("variations", []) if isinstance(detail, dict) else []
+            variations = (normalize_catalog_product(detail) or {}).get("variations", [])
             filtered = []
             for v in variations:
                 if partner and v.get("partner_name", "").lower() != partner.lower():
