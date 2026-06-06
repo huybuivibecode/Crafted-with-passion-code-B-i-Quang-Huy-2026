@@ -8,26 +8,17 @@ import logging
 from langgraph.graph import StateGraph, END
 
 from agent.graph.state import AgentState
-from agent.graph.nodes import (
-    detect_intent_node,
-    fetch_catalog_node,
-    fetch_product_detail_node,
-    check_stock_node,
-    process_catalog_node,
-    market_analysis_node,
-    inventory_analysis_node,
-    season_weather_node,
-    demand_analysis_node,
-    pricing_profit_node,
-    persona_compatibility_node,
-    decision_engine_node,
-    compare_node,
-    suggest_alternatives_node,
-    validate_output_node,
-    order_builder_node,
-    generate_response_node,
+from agent.zorin.workflow_nodes import (
+    zorin_brain_node,
+    intent_analysis_node,
+    task_router_node,
+    route_after_task_router,
+    zorin_ask_node,
+    data_agent_node,
+    function_node,
+    output_node,
+    memory_manager_node,
 )
-from agent.graph.router import route_by_intent
 
 logger = logging.getLogger(__name__)
 
@@ -37,101 +28,14 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 
 NODE_META = {
-    "intent": {
-        "label": "🧠 Detect Intent",
-        "desc": "Phân tích ý định người dùng",
-        "uses_llm": True,
-    },
-    "fetch": {
-        "label": "📦 Fetch Catalog",
-        "desc": "Gọi BurgerPrints API lấy danh sách sản phẩm",
-        "uses_llm": False,
-    },
-    "process": {
-        "label": "⚙️ Process Catalog",
-        "desc": "Parse HTML & normalize dữ liệu sản phẩm",
-        "uses_llm": False,
-    },
-    "market": {
-        "label": "🌎 Market Agent",
-        "desc": "Phân tích thị trường mục tiêu",
-        "uses_llm": False,
-    },
-    "inventory": {
-        "label": "📦 Inventory Agent",
-        "desc": "Xác thực tồn kho từ API",
-        "uses_llm": False,
-    },
-    "season_weather": {
-        "label": "☀️ Season/Weather",
-        "desc": "Tính mùa và khí hậu phù hợp",
-        "uses_llm": False,
-    },
-    "demand": {
-        "label": "📈 Demand Signals",
-        "desc": "Trend, competition, review proxy",
-        "uses_llm": False,
-    },
-    "pricing_profit": {
-        "label": "💰 Pricing/Profit",
-        "desc": "Tính giá bán, margin, ROI",
-        "uses_llm": False,
-    },
-    "persona_compat": {
-        "label": "🎯 Persona/Compat",
-        "desc": "Chấm persona và design-product fit",
-        "uses_llm": False,
-    },
-    "score": {
-        "label": "📊 Decision Engine",
-        "desc": "Chấm điểm & xếp hạng sản phẩm theo tiêu chí",
-        "uses_llm": False,
-    },
-    "fetch_detail": {
-        "label": "🔍 Fetch Detail",
-        "desc": "Lấy chi tiết sản phẩm cần so sánh",
-        "uses_llm": False,
-    },
-    "compare": {
-        "label": "⚖️ Compare",
-        "desc": "So sánh sản phẩm theo tiêu chí",
-        "uses_llm": False,
-    },
-    "stock": {
-        "label": "📦 Check Stock",
-        "desc": "Kiểm tra sản phẩm hết hàng",
-        "uses_llm": False,
-    },
-    "fetch_for_stock": {
-        "label": "📦 Fetch (Stock)",
-        "desc": "Lấy catalog cho nhánh kiểm tra tồn kho",
-        "uses_llm": False,
-    },
-    "process_for_stock": {
-        "label": "⚙️ Process (Stock)",
-        "desc": "Normalize catalog cho nhánh tồn kho",
-        "uses_llm": False,
-    },
-    "alternatives": {
-        "label": "🔄 Alternatives",
-        "desc": "Đề xuất sản phẩm thay thế",
-        "uses_llm": False,
-    },
-    "validate": {
-        "label": "🛡️ Validate Output",
-        "desc": "Xác thực sản phẩm/SKU trước khi trả response",
-        "uses_llm": False,
-    },
-    "order_builder": {
-        "label": "📝 Order Builder",
-        "desc": "Xây dựng payload đơn hàng",
-        "uses_llm": False,
-    },
-    "respond": {
-        "label": "💬 Generate Response",
-        "desc": "Tạo câu trả lời cuối cùng",
-        "uses_llm": False,
-    },
+    "brain": {"label": "🧠 Zorin Brain", "desc": "Validation + metadata + load/save memory (user msg)", "uses_llm": False},
+    "intent_analysis": {"label": "🧩 Intent Analysis", "desc": "Xác định intent & tiêu chí", "uses_llm": True},
+    "task_router": {"label": "🧭 Task Router", "desc": "Điều hướng hoặc yêu cầu bổ sung thông tin", "uses_llm": False},
+    "zorinask": {"label": "❓ ZorinAsk", "desc": "Thu thập thông tin còn thiếu", "uses_llm": False},
+    "data_agent": {"label": "🗃️ Data Agent", "desc": "Lớp truy xuất dữ liệu duy nhất (API/DB) + chuẩn hóa", "uses_llm": False},
+    "function": {"label": "🧰 Zorin Function", "desc": "Xử lý nghiệp vụ (recommend/compare/stock/order)", "uses_llm": False},
+    "output": {"label": "💬 Output", "desc": "Chuẩn hóa output thân thiện", "uses_llm": False},
+    "memory": {"label": "🧠 Memory Manager", "desc": "Ghi memory (assistant msg + metadata)", "uses_llm": False},
 }
 
 
@@ -153,115 +57,54 @@ def _make_traced_node(node_id: str, node_fn):
             result = node_fn(state)
             duration_ms = round((time.time() - start) * 1000)
 
-            # Determine method (AI vs fallback)
-            if node_id == "intent":
-                # Check if LLM was used or rule-based fallback
-                # If error field was cleared (empty string) AND criteria has "summary",
-                # rule-based sets error="" explicitly
-                criteria = result.get("extracted_criteria", {})
-                if criteria.get("summary") and not result.get("error"):
-                    # Could be either - check logs
-                    method = "ai"  # default; overridden below
-                else:
-                    method = "ai"
-
-                # Simpler detection: if error was cleared to "" by rule-based
-                # The rule-based fallback always populates criteria fully
-                rb_keys = {"intent", "location_preference", "max_lead_time", "market",
-                           "print_method", "product_names", "budget_concern", "summary"}
-                if rb_keys.issubset(set(criteria.keys())):
-                    method = "rule-based"
-                else:
-                    method = "ai"
-
-                intent = result.get("intent", "?")
-                loc = criteria.get("location_preference", "")
-                summary = f"intent={intent}" + (f", loc={loc}" if loc else "")
-
-            elif node_id in ("fetch", "fetch_for_stock"):
-                count = len(result.get("products_raw", []))
-                summary = f"{count} products fetched"
-                method = "api"
-
-            elif node_id in ("process", "process_for_stock"):
-                count = len(result.get("products_norm", []))
-                summary = f"{count} products normalized"
-                method = "parser"
-
-            elif node_id == "market":
-                market = result.get("market_context", {}).get("market", "?")
-                summary = f"market={market}"
-                method = "algorithm"
-
-            elif node_id == "inventory":
-                count = len(result.get("candidates", []))
-                oos = len(result.get("out_of_stock_ids", []))
-                summary = f"{count} candidates, {oos} out of stock"
-                method = "api"
-
-            elif node_id == "season_weather":
-                season = result.get("season_context", {}).get("season", "?")
-                temp = result.get("weather_context", {}).get("avg_temp", "?")
-                summary = f"{season}, avg_temp={temp}"
-                method = "algorithm"
-
-            elif node_id == "demand":
-                count = len(result.get("demand_signals", {}))
-                summary = f"{count} products analyzed"
-                method = "algorithm"
-
-            elif node_id == "pricing_profit":
-                count = len(result.get("pricing_context", {}))
-                summary = f"{count} products priced"
-                method = "algorithm"
-
-            elif node_id == "persona_compat":
-                count = len(result.get("persona_context", {}))
-                summary = f"{count} persona fits"
-                method = "algorithm"
-
-            elif node_id == "score":
-                scores = result.get("scores", [])
-                winner = result.get("winner", {})
-                w_name = winner.get("name", "?")[:30] if winner else "none"
-                summary = f"top={w_name}, {len(scores)} scored"
-                method = "algorithm"
-
-            elif node_id == "fetch_detail":
-                count = len(result.get("compare_products", []))
-                summary = f"{count} products for comparison"
-                method = "api"
-
-            elif node_id == "compare":
-                count = len(result.get("candidates", []))
-                summary = f"{count} products compared"
-                method = "algorithm"
-
-            elif node_id == "stock":
-                count = len(result.get("out_of_stock_ids", []))
-                summary = f"{count} out of stock"
-                method = "api"
-
-            elif node_id == "alternatives":
-                count = len(result.get("alternatives", []))
-                summary = f"{count} alternatives found"
-                method = "algorithm"
-
-            elif node_id == "validate":
-                count = len(result.get("validation_errors", []))
-                summary = f"{count} validation issues"
+            if node_id == "brain":
                 method = "validator"
-
-            elif node_id == "order_builder":
-                has_payload = bool(result.get("order_payload"))
-                summary = "payload built" if has_payload else "info requested"
-                method = "algorithm" if not result.get("error") else "fallback"
-
-            elif node_id == "respond":
-                msg = result.get("response_msg", "")
-                method = "algorithm" if not result.get("error") else "fallback"
-                summary = f"{len(msg)} chars response"
-
+                summary = f"history={len(result.get('conversation_history', []) or [])}"
+            elif node_id == "intent_analysis":
+                criteria = result.get("extracted_criteria", {}) or {}
+                rb_keys = {
+                    "intent",
+                    "location_preference",
+                    "max_lead_time",
+                    "market",
+                    "print_method",
+                    "product_names",
+                    "budget_concern",
+                    "partner_preference",
+                    "color_preference",
+                    "max_price",
+                    "min_price",
+                    "summary",
+                }
+                method = "rule-based" if rb_keys.issubset(set(criteria.keys())) else "ai"
+                summary = f"intent={result.get('intent', '?')}"
+            elif node_id == "task_router":
+                summary = f"route={result.get('zorin_route', '?')}, task={result.get('task', '?')}"
+                method = "algorithm"
+            elif node_id == "zorinask":
+                summary = f"missing={len(result.get('missing_fields', []) or [])}"
+                method = "fallback"
+            elif node_id == "data_agent":
+                summary = f"catalog={len(result.get('products_raw', []) or [])}, oos={len(result.get('out_of_stock_ids', []) or [])}"
+                method = "api"
+            elif node_id == "function":
+                task = result.get("task", "") or result.get("intent", "")
+                if task == "check_stock":
+                    summary = f"alternatives={len(result.get('alternatives', []) or [])}"
+                else:
+                    scores = result.get("scores", []) or []
+                    winner = result.get("winner", {}) or {}
+                    summary = f"task={task}, top={(winner.get('short_code') or winner.get('name') or 'none')}"
+                    if scores:
+                        summary += f", scored={len(scores)}"
+                method = "algorithm"
+            elif node_id == "output":
+                msg = result.get("response_msg", "") or ""
+                summary = f"{len(msg)} chars"
+                method = "algorithm"
+            elif node_id == "memory":
+                summary = "assistant saved"
+                method = "db"
             else:
                 method = "unknown"
                 summary = ""
@@ -276,12 +119,51 @@ def _make_traced_node(node_id: str, node_fn):
         # ── Build detailed output for node detail view ──
         output = {}
         try:
-            if node_id == "intent":
-                criteria = result.get("extracted_criteria", {})
+            if node_id == "brain":
+                output = {
+                    "session_id": result.get("session_id", ""),
+                    "history_count": len(result.get("conversation_history", []) or []),
+                    "error": result.get("error", ""),
+                }
+            elif node_id == "intent_analysis":
                 output = {
                     "intent": result.get("intent", ""),
-                    "criteria": criteria,
+                    "criteria": result.get("extracted_criteria", {}) or {},
                 }
+            elif node_id == "task_router":
+                output = {
+                    "route": result.get("zorin_route", ""),
+                    "task": result.get("task", ""),
+                    "missing_fields": result.get("missing_fields", []) or [],
+                }
+            elif node_id == "zorinask":
+                output = {
+                    "missing_fields": result.get("missing_fields", []) or [],
+                    "message": result.get("response_msg", ""),
+                }
+            elif node_id == "data_agent":
+                raws = result.get("products_raw", []) or []
+                output = {
+                    "catalog_count": len(raws),
+                    "out_of_stock_count": len(result.get("out_of_stock_ids", []) or []),
+                    "compare_count": len(result.get("compare_products", []) or []),
+                    "sample": [
+                        {"name": p.get("name", "?"), "short_code": p.get("short_code", "")}
+                        for p in raws[:10]
+                    ],
+                }
+            elif node_id == "function":
+                scores = result.get("scores", []) or []
+                output = {
+                    "task": result.get("task", "") or result.get("intent", ""),
+                    "winner": (result.get("winner") or {}).get("short_code", "") if isinstance(result.get("winner"), dict) else "",
+                    "scores_count": len(scores),
+                    "alternatives": len(result.get("alternatives", []) or []),
+                }
+            elif node_id == "output":
+                output = {"response": result.get("response_msg", "") or ""}
+            elif node_id == "memory":
+                output = {"saved": True}
             elif node_id in ("fetch", "fetch_for_stock"):
                 raws = result.get("products_raw", [])
                 output = {
@@ -440,86 +322,38 @@ def build_graph():
     # ----------------------------------------------------------------
     # Đăng ký tất cả nodes (wrapped with tracing)
     # ----------------------------------------------------------------
-    workflow.add_node("intent", _make_traced_node("intent", detect_intent_node))
-
-    # --- Recommend product branch ---
-    workflow.add_node("fetch", _make_traced_node("fetch", fetch_catalog_node))
-    workflow.add_node("process", _make_traced_node("process", process_catalog_node))
-    workflow.add_node("market", _make_traced_node("market", market_analysis_node))
-    workflow.add_node("inventory", _make_traced_node("inventory", inventory_analysis_node))
-    workflow.add_node("season_weather", _make_traced_node("season_weather", season_weather_node))
-    workflow.add_node("demand", _make_traced_node("demand", demand_analysis_node))
-    workflow.add_node("pricing_profit", _make_traced_node("pricing_profit", pricing_profit_node))
-    workflow.add_node("persona_compat", _make_traced_node("persona_compat", persona_compatibility_node))
-    workflow.add_node("score", _make_traced_node("score", decision_engine_node))
-
-    # --- Compare product branch ---
-    workflow.add_node("fetch_detail", _make_traced_node("fetch_detail", fetch_product_detail_node))
-    workflow.add_node("compare", _make_traced_node("compare", compare_node))
-
-    # --- Check stock branch ---
-    workflow.add_node("stock", _make_traced_node("stock", check_stock_node))
-    workflow.add_node("fetch_for_stock", _make_traced_node("fetch_for_stock", fetch_catalog_node))
-    workflow.add_node("process_for_stock", _make_traced_node("process_for_stock", process_catalog_node))
-    workflow.add_node("alternatives", _make_traced_node("alternatives", suggest_alternatives_node))
-
-    # --- Validation gate ---
-    workflow.add_node("validate", _make_traced_node("validate", validate_output_node))
-
-    # --- Order branch ---
-    workflow.add_node("order_builder", _make_traced_node("order_builder", order_builder_node))
-
-    # --- Final response ---
-    workflow.add_node("respond", _make_traced_node("respond", generate_response_node))
+    workflow.add_node("brain", _make_traced_node("brain", zorin_brain_node))
+    workflow.add_node("intent_analysis", _make_traced_node("intent_analysis", intent_analysis_node))
+    workflow.add_node("task_router", _make_traced_node("task_router", task_router_node))
+    workflow.add_node("zorinask", _make_traced_node("zorinask", zorin_ask_node))
+    workflow.add_node("data_agent", _make_traced_node("data_agent", data_agent_node))
+    workflow.add_node("function", _make_traced_node("function", function_node))
+    workflow.add_node("output", _make_traced_node("output", output_node))
+    workflow.add_node("memory", _make_traced_node("memory", memory_manager_node))
 
     # ----------------------------------------------------------------
     # Entry point
     # ----------------------------------------------------------------
-    workflow.set_entry_point("intent")
+    workflow.set_entry_point("brain")
 
     # ----------------------------------------------------------------
-    # Conditional routing từ intent node
-    # ----------------------------------------------------------------
+    workflow.add_edge("brain", "intent_analysis")
+    workflow.add_edge("intent_analysis", "task_router")
+
     workflow.add_conditional_edges(
-        "intent",
-        route_by_intent,
+        "task_router",
+        route_after_task_router,
         {
-            "fetch": "fetch",
-            "fetch_detail": "fetch_detail",
-            "stock": "stock",
-            "order_builder": "order_builder",
+            "zorinask": "zorinask",
+            "data_agent": "data_agent",
         },
     )
 
-    # Recommend product flow: fetch -> process -> commerce analysis -> score -> respond
-    workflow.add_edge("fetch", "process")
-    workflow.add_edge("process", "market")
-    workflow.add_edge("market", "inventory")
-    workflow.add_edge("inventory", "season_weather")
-    workflow.add_edge("season_weather", "demand")
-    workflow.add_edge("demand", "pricing_profit")
-    workflow.add_edge("pricing_profit", "persona_compat")
-    workflow.add_edge("persona_compat", "score")
-    workflow.add_edge("score", "validate")
-
-    # Compare product flow: fetch_detail -> compare -> commerce analysis -> score -> respond
-    workflow.add_edge("fetch_detail", "compare")
-    workflow.add_edge("compare", "market")
-
-    # Check stock flow: stock → fetch_for_stock → process_for_stock → alternatives → respond
-    workflow.add_edge("stock", "fetch_for_stock")
-    workflow.add_edge("fetch_for_stock", "process_for_stock")
-    workflow.add_edge("process_for_stock", "alternatives")
-    workflow.add_edge("alternatives", "validate")
-
-    # Order flow: order_builder → respond
-    workflow.add_edge("order_builder", "validate")
-
-    # Validation gate to final response
-    workflow.add_edge("validate", "respond")
-
-    # Kết thúc
-    workflow.add_edge("respond", END)
+    workflow.add_edge("zorinask", "output")
+    workflow.add_edge("data_agent", "function")
+    workflow.add_edge("function", "output")
+    workflow.add_edge("output", "memory")
+    workflow.add_edge("memory", END)
 
     return workflow.compile()
 
@@ -541,63 +375,28 @@ def get_graph():
 
 GRAPH_DEFINITION = {
     "nodes": [
-        {"id": "start", "type": "start", "label": "🚀 Start", "x": 400, "y": 0},
-        {"id": "intent", "type": "llm", "label": "🧠 Detect Intent", "x": 400, "y": 100},
-        # Recommend branch
-        {"id": "fetch", "type": "api", "label": "📦 Catalog", "x": 80, "y": 230},
-        {"id": "process", "type": "parser", "label": "⚙️ Normalize", "x": 80, "y": 340},
-        {"id": "market", "type": "algo", "label": "🌎 Market", "x": 250, "y": 340},
-        {"id": "inventory", "type": "api", "label": "📦 Inventory", "x": 420, "y": 340},
-        {"id": "season_weather", "type": "algo", "label": "☀️ Season/Weather", "x": 590, "y": 340},
-        {"id": "demand", "type": "algo", "label": "📈 Demand", "x": 250, "y": 455},
-        {"id": "pricing_profit", "type": "algo", "label": "💰 Pricing/Profit", "x": 420, "y": 455},
-        {"id": "persona_compat", "type": "algo", "label": "🎯 Persona/Compat", "x": 590, "y": 455},
-        {"id": "score", "type": "algo", "label": "📊 Decision Engine", "x": 420, "y": 570},
-        {"id": "validate", "type": "algo", "label": "🛡️ Validate", "x": 420, "y": 680},
-        # Compare branch
-        {"id": "fetch_detail", "type": "api", "label": "🔍 Fetch Detail", "x": 250, "y": 230},
-        {"id": "compare", "type": "algo", "label": "⚖️ Compare", "x": 250, "y": 285},
-        # Stock branch
-        {"id": "stock", "type": "api", "label": "📦 Check Stock", "x": 760, "y": 230},
-        {"id": "fetch_for_stock", "type": "api", "label": "📦 Fetch (Stock)", "x": 760, "y": 340},
-        {"id": "process_for_stock", "type": "parser", "label": "⚙️ Process (Stock)", "x": 760, "y": 450},
-        {"id": "alternatives", "type": "algo", "label": "🔄 Alternatives", "x": 760, "y": 560},
-        # Order branch
-        {"id": "order_builder", "type": "algo", "label": "📝 Order Builder", "x": 930, "y": 230},
-        # Final
-        {"id": "respond", "type": "algo", "label": "💬 Response", "x": 420, "y": 790},
-        {"id": "end", "type": "end", "label": "✅ End", "x": 420, "y": 900},
+        {"id": "start", "type": "start", "label": "🚀 Start", "x": 120, "y": 60},
+        {"id": "brain", "type": "algo", "label": "🧠 Zorin Brain", "x": 280, "y": 60},
+        {"id": "intent_analysis", "type": "llm", "label": "🧩 Intent Analysis", "x": 460, "y": 60},
+        {"id": "task_router", "type": "algo", "label": "🧭 Task Router", "x": 650, "y": 60},
+        {"id": "zorinask", "type": "algo", "label": "❓ ZorinAsk", "x": 650, "y": 180},
+        {"id": "data_agent", "type": "api", "label": "🗃️ Data Agent", "x": 820, "y": 60},
+        {"id": "function", "type": "algo", "label": "🧰 Zorin Function", "x": 1000, "y": 60},
+        {"id": "output", "type": "algo", "label": "💬 Output", "x": 820, "y": 300},
+        {"id": "memory", "type": "algo", "label": "🧠 Memory Manager", "x": 640, "y": 300},
+        {"id": "end", "type": "end", "label": "✅ End", "x": 460, "y": 300},
     ],
     "edges": [
-        {"source": "start", "target": "intent", "label": ""},
-        # Conditional from intent
-        {"source": "intent", "target": "fetch", "label": "recommend", "animated": True},
-        {"source": "intent", "target": "fetch_detail", "label": "compare", "animated": True},
-        {"source": "intent", "target": "stock", "label": "stock", "animated": True},
-        {"source": "intent", "target": "order_builder", "label": "order", "animated": True},
-        # Recommend flow
-        {"source": "fetch", "target": "process", "label": ""},
-        {"source": "process", "target": "market", "label": ""},
-        {"source": "market", "target": "inventory", "label": ""},
-        {"source": "inventory", "target": "season_weather", "label": ""},
-        {"source": "season_weather", "target": "demand", "label": ""},
-        {"source": "demand", "target": "pricing_profit", "label": ""},
-        {"source": "pricing_profit", "target": "persona_compat", "label": ""},
-        {"source": "persona_compat", "target": "score", "label": ""},
-        {"source": "score", "target": "validate", "label": ""},
-        # Compare flow
-        {"source": "fetch_detail", "target": "compare", "label": ""},
-        {"source": "compare", "target": "market", "label": ""},
-        # Stock flow
-        {"source": "stock", "target": "fetch_for_stock", "label": ""},
-        {"source": "fetch_for_stock", "target": "process_for_stock", "label": ""},
-        {"source": "process_for_stock", "target": "alternatives", "label": ""},
-        {"source": "alternatives", "target": "validate", "label": ""},
-        # Order flow
-        {"source": "order_builder", "target": "validate", "label": ""},
-        {"source": "validate", "target": "respond", "label": ""},
-        # End
-        {"source": "respond", "target": "end", "label": ""},
+        {"source": "start", "target": "brain", "label": ""},
+        {"source": "brain", "target": "intent_analysis", "label": ""},
+        {"source": "intent_analysis", "target": "task_router", "label": ""},
+        {"source": "task_router", "target": "zorinask", "label": "thiếu dữ liệu", "animated": True},
+        {"source": "task_router", "target": "data_agent", "label": "đủ dữ liệu", "animated": True},
+        {"source": "data_agent", "target": "function", "label": ""},
+        {"source": "function", "target": "output", "label": ""},
+        {"source": "zorinask", "target": "output", "label": ""},
+        {"source": "output", "target": "memory", "label": ""},
+        {"source": "memory", "target": "end", "label": ""},
     ],
 }
 
@@ -640,14 +439,19 @@ def run_agent(query: str, session_id: str = "", conversation_history: list = Non
         "error": "",
         "validation_errors": [],
         "node_trace": [],
+        "zorin_route": "data_agent",
+        "task": "",
+        "missing_fields": [],
     }
 
     try:
         final_state = graph.invoke(initial_state)
+        criteria = final_state.get("extracted_criteria") or {}
         return {
             "response_msg": final_state.get("response_msg", ""),
             "intent": final_state.get("intent", ""),
-            "scores": final_state.get("scores", [])[:5],
+            "extracted_criteria": criteria,
+            "scores": final_state.get("scores", []),
             "reasons": final_state.get("reasons", []),
             "winner": final_state.get("winner"),
             "alternatives": final_state.get("alternatives", []),
@@ -659,6 +463,7 @@ def run_agent(query: str, session_id: str = "", conversation_history: list = Non
             "error": final_state.get("error", ""),
             "node_trace": final_state.get("node_trace", []),
         }
+
     except Exception as e:
         return {
             "response_msg": f"❌ Đã xảy ra lỗi xử lý: {str(e)}",

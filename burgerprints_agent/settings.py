@@ -99,3 +99,6 @@ BURGER_PRINTS_BASE_URL = "https://api.burgerprints.com"
 # Gemini LLM
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
 GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.0-flash")
+
+# Catalog cache TTL (seconds) - giảm latency cho catalog queries
+CATALOG_CACHE_TTL = int(os.getenv("CATALOG_CACHE_TTL", "300"))  # 5 phút default

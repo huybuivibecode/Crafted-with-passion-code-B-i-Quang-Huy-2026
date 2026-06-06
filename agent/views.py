@@ -15,10 +15,12 @@ from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
 
-from agent.models import Conversation, Message
-from agent.graph.graph import run_agent, GRAPH_DEFINITION
+from agent.models import Conversation
+from agent.graph.graph import GRAPH_DEFINITION
+from agent.zorin import handle_chat
 from agent.services import burgerprints as bp_api
 from agent.services.html_parser import normalize_product
+from agent.services.catalog_cache import get_cache_stats, invalidate_products_cache, invalidate_oos_cache
 
 logger = logging.getLogger(__name__)
 
@@ -70,49 +72,40 @@ class ChatAPIView(APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        # Lấy hoặc tạo conversation
-        conversation, _ = Conversation.objects.get_or_create(session_id=session_id)
-
-        # Lưu user message
-        Message.objects.create(
-            conversation=conversation,
-            role="user",
-            content=query,
-        )
-
-        # Lấy history
-        history_qs = conversation.messages.order_by("created_at")[:20]
-        history = [{"role": m.role, "content": m.content} for m in history_qs]
-
-        # Chạy agent
-        result = run_agent(
-            query=query,
-            session_id=session_id,
-            conversation_history=history,
-        )
+        result = handle_chat(query=query, session_id=session_id)
 
         response_msg = result.get("response_msg", "")
         intent = result.get("intent", "")
+        scores_raw = result.get("scores", [])
 
-        # Lưu assistant message
-        Message.objects.create(
-            conversation=conversation,
-            role="assistant",
-            content=response_msg,
+        # Khi list_all → gửi tất cả về FE (tối đa 200 để tránh quá tải)
+        # Khi không → chỉ gửi top 5 cho UI product cards
+        criteria = result.get("extracted_criteria") or {}
+        list_all = bool(criteria.get("list_all", False))
+        product_limit = 200 if list_all else 5
+        products = _serialize_scores(scores_raw)[:product_limit]
+
+        winner = _serialize_product(result.get("winner"))
+        alternatives = [_serialize_product(p) for p in result.get("alternatives", [])[:3]]
+        follow_ups = _build_follow_ups(
             intent=intent,
-            metadata={
-                "scores": _serialize_scores(result.get("scores", [])),
-                "reasons": result.get("reasons", []),
-            },
+            query=query,
+            products=products,
+            winner=winner,
+            alternatives=alternatives,
         )
 
         return Response({
+            "session_id": session_id,
             "response": response_msg,
             "intent": intent,
-            "products": _serialize_scores(result.get("scores", []))[:5],
+            "list_all": list_all,
+            "total_products": len(scores_raw),
+            "products": products,
             "reasons": result.get("reasons", []),
-            "winner": _serialize_product(result.get("winner")),
-            "alternatives": [_serialize_product(p) for p in result.get("alternatives", [])[:3]],
+            "winner": winner,
+            "alternatives": alternatives,
+            "follow_ups": follow_ups,
             "market_context": result.get("market_context", {}),
             "season_context": result.get("season_context", {}),
             "weather_context": result.get("weather_context", {}),
@@ -159,20 +152,70 @@ class OutOfStockAPIView(APIView):
 
 
 class BalanceAPIView(APIView):
-    """GET /api/balance/ - Health check kết nối BurgerPrints API"""
+    """GET /api/balance/ - Số dư tài khoản + health check"""
 
     def get(self, request):
         try:
-            # Dùng product list (limit=1) để kiểm tra kết nối API
-            products = bp_api.get_products(limit=1)
-            return Response({
-                "status": "ok",
-                "api_connected": True,
-                "product_count": len(products),
-            })
+            # Kiểm tra xác thực API key
+            auth_data = bp_api.get_authenticated()
+            is_valid = auth_data.get("is_success", False)
+
+            result = {
+                "status": "ok" if is_valid else "auth_failed",
+                "api_connected": is_valid,
+                "message": auth_data.get("message", ""),
+            }
+
+            # Nếu auth OK, lấy thêm balance
+            if is_valid:
+                try:
+                    balance_data = bp_api.get_balance()
+                    balance_body = balance_data.get("data", balance_data) if isinstance(balance_data, dict) else {}
+                    result["balance"] = balance_body
+                except Exception as be:
+                    result["balance_error"] = str(be)
+
+            return Response(result)
         except Exception as e:
             return Response(
                 {"status": "error", "api_connected": False, "error": str(e)},
+                status=status.HTTP_502_BAD_GATEWAY,
+            )
+
+
+class OrderSubmitAPIView(APIView):
+    """
+    POST /api/order/ - Tạo đơn hàng thực sự qua BurgerPrints API
+    Body: {order payload theo BurgerPrints spec}
+    """
+
+    def post(self, request):
+        payload = request.data
+        if not payload:
+            return Response(
+                {"error": "Order payload không được để trống"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # Validate minimal required fields
+        required_keys = ["shipping", "items"]
+        missing = [k for k in required_keys if k not in payload]
+        if missing:
+            return Response(
+                {"error": f"Thiếu các trường bắt buộc: {', '.join(missing)}"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        try:
+            result = bp_api.create_order(payload)
+            return Response({
+                "success": True,
+                "order": result,
+            })
+        except Exception as e:
+            logger.error(f"OrderSubmitAPIView error: {e}")
+            return Response(
+                {"error": f"Không thể tạo đơn hàng: {str(e)}"},
                 status=status.HTTP_502_BAD_GATEWAY,
             )
 
@@ -190,6 +233,7 @@ class ConversationHistoryAPIView(APIView):
                     "role": m.role,
                     "content": m.content,
                     "intent": m.intent,
+                    "metadata": _serialize_message_metadata(m.metadata),
                     "created_at": m.created_at.isoformat(),
                 }
                 for m in messages
@@ -197,6 +241,19 @@ class ConversationHistoryAPIView(APIView):
             return Response({"messages": data, "session_id": session_id})
         except Conversation.DoesNotExist:
             return Response({"messages": [], "session_id": session_id})
+
+
+class CacheStatsAPIView(APIView):
+    """GET /api/cache/stats/ - Thông tin trạng thái cache"""
+
+    def get(self, request):
+        return Response(get_cache_stats())
+
+    def delete(self, request):
+        """Xoá cache để force refresh catalog"""
+        invalidate_products_cache()
+        invalidate_oos_cache()
+        return Response({"message": "Cache đã được xoá. Catalog sẽ được tải lại từ BurgerPrints API."})
 
 
 # ---------------------------------------------------------------------------
@@ -227,6 +284,35 @@ def _serialize_product(product: dict) -> dict:
         "inventory_status": product.get("inventory_status", "unknown"),
         "sku_valid": product.get("sku_valid", False),
         "thumbnail": product.get("thumbnail", ""),
+        "partners": product.get("partners", []),
+        "partner_prices": product.get("partner_prices", {}),
+        "price_min": product.get("price_min", 0),
+        "price_max": product.get("price_max", 0),
+        "available_colors": product.get("available_colors", []),
+        "colors_count": product.get("colors_count", 0),
+    }
+
+
+def _serialize_message_metadata(metadata: dict) -> dict:
+    metadata = metadata or {}
+    scores = metadata.get("scores", []) or []
+    serialized_scores = []
+    for item in scores[:5]:
+        if isinstance(item, dict) and "product" in item:
+            serialized_scores.append({
+                **_serialize_product(item.get("product", {})),
+                "score": item.get("score", 0),
+                "breakdown": item.get("breakdown", {}),
+                "evidence": item.get("evidence", {}),
+            })
+        elif isinstance(item, dict):
+            serialized_scores.append(item)
+    return {
+        "scores": serialized_scores,
+        "reasons": metadata.get("reasons", []) or [],
+        "winner": _serialize_product(metadata.get("winner") or {}),
+        "alternatives": [_serialize_product(p) for p in (metadata.get("alternatives", []) or [])[:3]],
+        "validation_errors": metadata.get("validation_errors", []) or [],
     }
 
 
@@ -243,8 +329,50 @@ def _serialize_scores(scores: list) -> list:
     return result
 
 
+def _build_follow_ups(intent: str, query: str, products: list, winner: dict, alternatives: list) -> list:
+    """Tạo gợi ý follow-up bằng tiếng Việt đúng dấu."""
+    suggestions = []
+    top_product = winner or (products[0] if products else {})
+    second_product = products[1] if len(products) > 1 else {}
+
+    if intent == "recommend_product":
+        if top_product.get("name"):
+            suggestions.append(f"Phân tích kỹ hơn {top_product['name']}")
+            suggestions.append(f"Kiểm tra tồn kho cho {top_product['name']}")
+        if top_product.get("name") and second_product.get("name"):
+            suggestions.append(f"So sánh {top_product['name']} với {second_product['name']}")
+        suggestions.append("Lọc thêm theo partner, màu sắc và ngân sách")
+    elif intent == "compare_product":
+        if top_product.get("name"):
+            suggestions.append("Sản phẩm nào phù hợp thị trường US hơn trong các mẫu này?")
+            suggestions.append(f"Kiểm tra tồn kho cho {top_product['name']}")
+        suggestions.append("So sánh thêm theo partner, màu sắc và khoảng giá")
+    elif intent == "check_stock":
+        if alternatives:
+            suggestions.append(f"Tìm sản phẩm thay thế giống {alternatives[0].get('name', 'sản phẩm này')}")
+        suggestions.append("Lọc sản phẩm còn hàng theo partner và location")
+    elif intent == "create_order":
+        suggestions.append("Kiểm tra trạng thái đơn hàng vừa tạo")
+        suggestions.append("Tìm thêm sản phẩm để thêm vào đơn")
+    else:
+        suggestions.extend([
+            "Gợi ý 3 sản phẩm POD dễ bán tốt nhất",
+            "So sánh 2 sản phẩm theo giá, màu sắc và partner",
+            "Tìm sản phẩm dưới $12 cho thị trường US",
+        ])
+
+    unique = []
+    seen = set()
+    for item in suggestions:
+        key = item.strip().lower()
+        if item and key not in seen:
+            seen.add(key)
+            unique.append(item)
+    return unique[:4]
+
+
 class GraphDefinitionAPIView(APIView):
-    """GET /api/graph-definition/ - Graph structure for ReactFlow"""
+    """GET /api/graph-definition/ - Graph structure for visualization"""
 
     def get(self, request):
         return Response(GRAPH_DEFINITION)

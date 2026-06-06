@@ -195,6 +195,35 @@ def normalize_product(product: dict) -> dict:
 
     short_code = product.get("short_code", "")
 
+    available_colors = product.get("available_colors") or product.get("colors") or []
+    available_sizes = product.get("available_sizes") or product.get("sizes") or []
+    variations = product.get("variations") or product.get("variants") or []
+
+    partner_prices = {}
+    partners = []
+    price_min = None
+    price_max = None
+
+    if isinstance(variations, list):
+        for v in variations:
+            if not isinstance(v, dict):
+                continue
+            partner_name = v.get("partner_name") or v.get("partner") or ""
+            if partner_name and partner_name not in partners:
+                partners.append(partner_name)
+
+            try:
+                price = float(v.get("price")) if v.get("price") not in (None, "") else None
+            except (TypeError, ValueError):
+                price = None
+
+            if price is not None:
+                price_min = price if price_min is None else min(price_min, price)
+                price_max = price if price_max is None else max(price_max, price)
+                if partner_name:
+                    prev = partner_prices.get(partner_name)
+                    partner_prices[partner_name] = price if prev is None else min(prev, price)
+
     # Fallback: nếu không parse được processing_time, dùng default theo location
     if parsed["processing_time"] == "Unknown":
         loc = parsed["location"]
@@ -225,6 +254,15 @@ def normalize_product(product: dict) -> dict:
         "thumbnail": product.get("url", "") or product.get("thumbnail", "") or product.get("image", ""),
         "design_type": product.get("design_type", ""),
         "status": product.get("status", "active"),
+        "available_colors": available_colors if isinstance(available_colors, list) else [],
+        "available_sizes": available_sizes if isinstance(available_sizes, list) else [],
+        "variations": variations if isinstance(variations, list) else [],
+        "partners": partners,
+        "partner_prices": partner_prices,
+        "price_min": price_min if price_min is not None else 0,
+        "price_max": price_max if price_max is not None else 0,
+        "colors_count": len(available_colors) if isinstance(available_colors, list) else 0,
+        "sizes_count": len(available_sizes) if isinstance(available_sizes, list) else 0,
         **parsed,
         "_raw": product,
     }

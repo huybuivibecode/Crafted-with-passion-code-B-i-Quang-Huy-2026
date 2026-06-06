@@ -1,5 +1,5 @@
 """
-BurgerPrints API service - async httpx client
+BurgerPrints API service - sync httpx client
 Wraps all /v2 endpoints used by the agent
 """
 import os
@@ -17,6 +17,10 @@ def _get_headers() -> dict:
         "Accept": "application/json",
     }
 
+
+# ---------------------------------------------------------------------------
+# Product endpoints
+# ---------------------------------------------------------------------------
 
 def get_products(page: int = 1, limit: int = 100) -> list:
     """
@@ -68,18 +72,38 @@ def get_product_detail(short_code: str) -> dict:
 
 
 def get_out_of_stock() -> list:
-    """GET /v2/product/out-of-stock - Sản phẩm hết hàng"""
-    with httpx.Client(timeout=30) as client:
-        resp = client.get(
-            f"{BASE_URL}/v2/product/out-of-stock",
-            headers=_get_headers(),
-        )
-        resp.raise_for_status()
-        body = resp.json()
-        if isinstance(body, dict):
-            return body.get("data", body.get("result", []))
-        return body if isinstance(body, list) else []
+    """GET /v2/product/out-of-stock - Sản phẩm hết hàng
 
+    BurgerPrints API có thể expose endpoint là `/v2/product/outofstock` (không dấu gạch).
+    Hàm này thử cả hai để tránh lỗi 400/404 tùy môi trường.
+    """
+    with httpx.Client(timeout=30) as client:
+        last_exc = None
+        for path in ("/v2/product/out-of-stock", "/v2/product/outofstock"):
+            try:
+                resp = client.get(
+                    f"{BASE_URL}{path}",
+                    headers=_get_headers(),
+                )
+                resp.raise_for_status()
+                body = resp.json()
+                if isinstance(body, dict):
+                    return body.get("data", body.get("result", []))
+                return body if isinstance(body, list) else []
+            except httpx.HTTPStatusError as e:
+                last_exc = e
+                status_code = e.response.status_code if e.response is not None else None
+                if status_code not in (400, 404):
+                    raise
+                continue
+        if last_exc:
+            raise last_exc
+        return []
+
+
+# ---------------------------------------------------------------------------
+# Order endpoints
+# ---------------------------------------------------------------------------
 
 def create_order(payload: dict) -> dict:
     """POST /v2/order - Tạo đơn hàng mới"""
@@ -114,6 +138,58 @@ def get_order_detail(order_id: str) -> dict:
         )
         resp.raise_for_status()
         return resp.json()
+
+
+def cancel_order(order_id: str) -> dict:
+    """PUT /v2/order/cancel - Huỷ đơn hàng"""
+    with httpx.Client(timeout=30) as client:
+        resp = client.put(
+            f"{BASE_URL}/v2/order/cancel",
+            headers=_get_headers(),
+            json={"id": order_id},
+        )
+        resp.raise_for_status()
+        return resp.json()
+
+
+def get_order_tracking(order_id: str) -> dict:
+    """GET /v2/order/tracking - Theo dõi đơn hàng"""
+    with httpx.Client(timeout=30) as client:
+        resp = client.get(
+            f"{BASE_URL}/v2/order/tracking",
+            headers=_get_headers(),
+            params={"id": order_id},
+        )
+        resp.raise_for_status()
+        return resp.json()
+
+
+def charge_order(order_id: str) -> dict:
+    """POST /v2/order/charge - Thanh toán đơn hàng"""
+    with httpx.Client(timeout=30) as client:
+        resp = client.post(
+            f"{BASE_URL}/v2/order/charge",
+            headers=_get_headers(),
+            json={"id": order_id},
+        )
+        resp.raise_for_status()
+        return resp.json()
+
+
+# ---------------------------------------------------------------------------
+# Account endpoints
+# ---------------------------------------------------------------------------
+
+def get_authenticated() -> dict:
+    """GET /v2/authenticated - Kiểm tra API key hợp lệ"""
+    with httpx.Client(timeout=15) as client:
+        resp = client.get(
+            f"{BASE_URL}/v2/authenticated",
+            headers=_get_headers(),
+        )
+        resp.raise_for_status()
+        body = resp.json()
+        return body.get("data", body)
 
 
 def get_balance() -> dict:

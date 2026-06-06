@@ -35,45 +35,67 @@
                 <button class="quick-btn" data-prompt="So sánh Gildan 5000 và Gildan 64000">⚖️ So sánh G5000 vs G64000</button>
                 <button class="quick-btn" data-prompt="Tôi mới bán POD. Nên bắt đầu với sản phẩm nào?">🌱 Mới bán POD</button>
                 <button class="quick-btn" data-prompt="Sản phẩm nào dùng công nghệ DTG tốt nhất?">🖨️ DTG tốt nhất</button>
-                <button class="quick-btn" data-prompt="Sản phẩm này còn hàng không?">📦 Kiểm tra tồn kho</button>
+                <button class="quick-btn" data-prompt="Kiểm tra tồn kho sản phẩm">📦 Kiểm tra tồn kho</button>
+                <button class="quick-btn" data-prompt="Tìm áo màu đen, partner Spire, dưới $12, ship US">🔍 Lọc theo điều kiện</button>
+                <button class="quick-btn" data-prompt="Sản phẩm nào có lợi nhuận cao nhất?">💰 Lợi nhuận cao nhất</button>
             </div>
         </div>
 
         <div class="sidebar-section">
-            <h3 class="sidebar-title">📊 Bộ lọc</h3>
+            <h3 class="sidebar-title">📊 Bộ lọc nhanh</h3>
             <div class="filter-group">
-                <label class="filter-label">Location</label>
+                <label class="filter-label">🌍 Location</label>
                 <div class="filter-tags">
                     <span class="filter-tag active" data-filter="location" data-value="">Tất cả</span>
                     <span class="filter-tag" data-filter="location" data-value="US">🇺🇸 US</span>
                     <span class="filter-tag" data-filter="location" data-value="EU">🇪🇺 EU</span>
                     <span class="filter-tag" data-filter="location" data-value="China">🇨🇳 China</span>
+                    <span class="filter-tag" data-filter="location" data-value="Vietnam">🇻🇳 VN</span>
                 </div>
             </div>
             <div class="filter-group">
-                <label class="filter-label">Print Method</label>
+                <label class="filter-label">🖨️ Print Method</label>
                 <div class="filter-tags">
                     <span class="filter-tag active" data-filter="print" data-value="">Tất cả</span>
                     <span class="filter-tag" data-filter="print" data-value="DTG">DTG</span>
                     <span class="filter-tag" data-filter="print" data-value="Sublimation">Sub</span>
                     <span class="filter-tag" data-filter="print" data-value="AOP">AOP</span>
+                    <span class="filter-tag" data-filter="print" data-value="Embroidery">Thêu</span>
                 </div>
             </div>
             <div class="filter-group">
-                <label class="filter-label">Lead Time</label>
+                <label class="filter-label">⏱️ Lead Time</label>
                 <div class="filter-tags">
-                    <span class="filter-tag active" data-filter="lead" data-value="999">Tất cả</span>
+                    <span class="filter-tag active" data-filter="lead" data-value="">Tất cả</span>
                     <span class="filter-tag" data-filter="lead" data-value="5">⚡ 1-5 ngày</span>
                     <span class="filter-tag" data-filter="lead" data-value="10">🔵 ≤10 ngày</span>
                 </div>
             </div>
+            <div class="filter-group">
+                <label class="filter-label">💵 Khoảng giá</label>
+                <div class="filter-tags">
+                    <span class="filter-tag active" data-filter="price" data-value="">Tất cả</span>
+                    <span class="filter-tag" data-filter="price" data-value="under10">Dưới $10</span>
+                    <span class="filter-tag" data-filter="price" data-value="under15">Dưới $15</span>
+                    <span class="filter-tag" data-filter="price" data-value="over15">Trên $15</span>
+                </div>
+            </div>
+            <button class="btn-apply-filter" id="btn-apply-filter">🔍 Áp dụng bộ lọc</button>
         </div>
 
         <div class="sidebar-section">
             <h3 class="sidebar-title">💬 Phiên hiện tại</h3>
             <div class="session-info">
                 <span class="session-id" id="session-display">{{ session_id|truncatechars:12 }}...</span>
-                <button class="btn-new-chat" id="btn-new-chat" title="Tạo phiên mới">🔄 Phiên mới</button>
+                <button class="btn-new-chat" id="btn-new-chat" title="Tạo phiên mới">🔄 Mới</button>
+            </div>
+        </div>
+
+        <div class="sidebar-section">
+            <h3 class="sidebar-title">🗄️ Cache</h3>
+            <div class="cache-info" id="cache-info">
+                <span class="cache-label">Catalog cache</span>
+                <button class="btn-clear-cache" id="btn-clear-cache" title="Làm mới catalog từ API">🔄 Refresh</button>
             </div>
         </div>
     </aside>
@@ -87,22 +109,23 @@
                 <div class="avatar">🍔</div>
                 <div class="message-content">
                     <div class="message-bubble assistant-bubble">
-                        <p>Xin chào! Tôi là <strong>BurgerPrintsAgent</strong> - AI Fulfillment Advisor của bạn. 🎉</p>
-                        <p>Tôi có thể giúp bạn:</p>
+                        <p><strong>BurgerPrintsAgent</strong> sẵn sàng hỗ trợ bạn như một trợ lý chat thực thụ.</p>
+                        <p>Bạn cứ nói chuyện tự nhiên, tôi sẽ tự hiểu context và đi tiếp từng bước.</p>
+                        <p>Tôi làm tốt nhất với:</p>
                         <ul>
-                            <li>🔍 <strong>Tìm sản phẩm</strong> phù hợp theo thị trường và yêu cầu</li>
-                            <li>⚖️ <strong>So sánh sản phẩm</strong> về location, lead time, material</li>
-                            <li>📦 <strong>Kiểm tra tồn kho</strong> và đề xuất sản phẩm thay thế</li>
-                            <li>📝 <strong>Tư vấn</strong> sản phẩm tốt nhất cho seller mới</li>
+                            <li><strong>Tìm sản phẩm</strong> theo market, partner, màu sắc, budget</li>
+                            <li><strong>So sánh sản phẩm</strong> theo giá, màu, location, print tech</li>
+                            <li><strong>Kiểm tra tồn kho</strong> và gợi ý phương án thay thế</li>
+                            <li><strong>Tư vấn POD</strong> theo mindset seller, không phải trả lời máy móc</li>
                         </ul>
-                        <p>Hãy hỏi tôi bằng tiếng Việt tự nhiên nhé! 🚀</p>
+                        <p>Thử một câu như: <code>Tìm áo màu đen, partner Spire, dưới $12, ship US</code></p>
                     </div>
                     <span class="message-time">Vừa xong</span>
                 </div>
             </div>
         </div>
 
-        <!-- Product cards area (appears below messages for product results) -->
+        <!-- Product cards area -->
         <div class="product-cards-area" id="product-cards-area" style="display:none;">
             <div class="product-cards-header">
                 <span class="product-cards-title" id="product-cards-title">Sản phẩm đề xuất</span>
@@ -113,11 +136,16 @@
 
         <!-- Chat input -->
         <div class="chat-input-area">
+            <div class="composer-suggestions" id="composer-suggestions">
+                <button class="composer-chip" data-prompt="Tìm 3 sản phẩm POD dễ cho seller mới scale nhất">Seller mới nên bán gì</button>
+                <button class="composer-chip" data-prompt="So sánh Comfort Colors 1566 với Bella + Canvas 3945">So sánh 2 sản phẩm</button>
+                <button class="composer-chip" data-prompt="Tìm sản phẩm màu đen, partner Spire, dưới $12">Lọc theo partner và giá</button>
+            </div>
             <div class="input-wrapper">
                 <textarea
                     id="chat-input"
                     class="chat-input"
-                    placeholder="Hỏi tôi về sản phẩm BurgerPrints... (VD: Tôi muốn bán áo thun cho thị trường Mỹ)"
+                    placeholder="Nhắn tin tự nhiên như đang chat với ChatGPT..."
                     rows="1"
                     maxlength="500"
                 ></textarea>
@@ -130,7 +158,7 @@
                     </button>
                 </div>
             </div>
-            <p class="input-hint">Enter để gửi · Shift+Enter xuống dòng</p>
+            <p class="input-hint">Enter để gửi · Shift+Enter xuống dòng · lịch sử sẽ được giữ theo session</p>
         </div>
     </section>
 
@@ -146,6 +174,84 @@
 
 <!-- Toast notification -->
 <div class="toast" id="toast"></div>
+
+<!-- Order Modal -->
+<div class="modal-overlay" id="order-modal" style="display:none;">
+    <div class="modal-card">
+        <div class="modal-header">
+            <h2 class="modal-title">📦 Tạo Đơn Hàng</h2>
+            <button class="modal-close" id="modal-close-btn">✕</button>
+        </div>
+        <div class="modal-body">
+            <div class="order-step" id="order-step-1">
+                <h3 class="step-title">Bước 1: Thông tin sản phẩm</h3>
+                <div class="form-group">
+                    <label class="form-label">SKU sản phẩm *</label>
+                    <input type="text" id="order-sku" class="form-input" placeholder="VD: USG5000">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Kích thước *</label>
+                    <input type="text" id="order-size" class="form-input" placeholder="VD: M, L, XL">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Số lượng *</label>
+                    <input type="number" id="order-qty" class="form-input" placeholder="1" min="1" value="1">
+                </div>
+            </div>
+            <div class="order-step" id="order-step-2">
+                <h3 class="step-title">Bước 2: Thông tin giao hàng</h3>
+                <div class="form-group">
+                    <label class="form-label">Tên khách hàng *</label>
+                    <input type="text" id="order-name" class="form-input" placeholder="Nhập tên đầy đủ">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Email</label>
+                    <input type="email" id="order-email" class="form-input" placeholder="email@example.com">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Số điện thoại</label>
+                    <input type="text" id="order-phone" class="form-input" placeholder="+1234567890">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Địa chỉ (Line 1) *</label>
+                    <input type="text" id="order-addr1" class="form-input" placeholder="Số nhà, tên đường">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Địa chỉ (Line 2)</label>
+                    <input type="text" id="order-addr2" class="form-input" placeholder="Căn hộ, tầng, v.v.">
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label class="form-label">Thành phố *</label>
+                        <input type="text" id="order-city" class="form-input" placeholder="VD: New York">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Bang/Tỉnh *</label>
+                        <input type="text" id="order-state" class="form-input" placeholder="VD: NY">
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label class="form-label">Mã bưu điện *</label>
+                        <input type="text" id="order-postal" class="form-input" placeholder="VD: 10001">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Quốc gia *</label>
+                        <input type="text" id="order-country" class="form-input" placeholder="US, GB, DE..." value="US">
+                    </div>
+                </div>
+            </div>
+            <div class="order-step" id="order-step-3" style="display:none;">
+                <h3 class="step-title">Bước 3: Xác nhận</h3>
+                <div class="order-preview" id="order-preview"></div>
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn-secondary" id="order-btn-prev" style="display:none;">← Quay lại</button>
+            <button class="btn-primary" id="order-btn-next">Tiếp theo →</button>
+        </div>
+    </div>
+</div>
 
 <!-- Hidden data -->
 <input type="hidden" id="session-id-input" value="{{ session_id }}">

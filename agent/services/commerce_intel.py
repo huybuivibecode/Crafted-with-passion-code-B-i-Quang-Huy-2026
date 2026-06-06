@@ -67,22 +67,21 @@ MARKET_PROFILES = {
 
 
 def infer_market(criteria: Dict[str, Any], query: str) -> Dict[str, Any]:
-    text = f"{query} {criteria.get('market', '')} {criteria.get('location_preference', '')}".upper()
-    market_key = "US"
-    if any(x in text for x in ["GERMANY", "DUC", "ĐUC", "ĐỨC"]):
-        market_key = "GERMANY"
-    elif any(x in text for x in ["UK", "UNITED KINGDOM", "ANH"]):
-        market_key = "UK"
-    elif any(x in text for x in ["FRANCE", "PHAP", "PHÁP"]):
-        market_key = "FRANCE"
-    elif any(x in text for x in ["EU", "EUROPE", "CHAU AU", "CHÂU ÂU"]):
-        market_key = "EU"
-    elif any(x in text for x in ["US", "USA", "AMERICA", "MỸ", "MY"]):
+    """Lấy profile thị trường dựa trên criteria đã được LLM trích xuất."""
+    market_key = criteria.get("market") or criteria.get("location_preference") or "US"
+    market_key = market_key.upper()
+
+    # Map các biến thể về key chuẩn trong MARKET_PROFILES
+    if market_key in ["USA", "AMERICA", "MỸ", "MY"]:
         market_key = "US"
+    elif market_key in ["EUROPE", "CHÂU ÂU", "CHAU AU"]:
+        market_key = "EU"
+    elif market_key in ["ĐỨC", "DUC", "GERMANY"]:
+        market_key = "GERMANY"
 
     profile = dict(MARKET_PROFILES.get(market_key, MARKET_PROFILES["US"]))
     profile["market_key"] = market_key
-    profile["source"] = "rule-based market profile"
+    profile["source"] = "LLM-driven market profile"
     return profile
 
 

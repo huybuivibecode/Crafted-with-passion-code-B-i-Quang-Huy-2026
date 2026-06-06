@@ -11,8 +11,8 @@ class AgentState(TypedDict):
     conversation_history: List[dict]    # Lịch sử hội thoại [{role, content}]
 
     # Intent detection
-    intent: str                         # recommend_product | compare_product | check_stock | create_order
-    extracted_criteria: dict            # Tiêu chí trích xuất: location, max_lead_time, market, print_method...
+    intent: str                         # recommend_product | compare_product | check_stock | create_order | catalog_info | general_inquiry
+    extracted_criteria: dict            # Tiêu chí trích xuất: location, max_lead_time, market, print_method, catalog_query_type, partner_preference, color_preference, max_price, min_price...
 
     # Product data
     products_raw: List[dict]            # Dữ liệu thô từ BurgerPrints API
@@ -53,3 +53,8 @@ class AgentState(TypedDict):
 
     # Execution trace (for graph visualization)
     node_trace: List[dict]              # [{node_id, label, status, method, duration_ms, summary, error}]
+
+    # Zorin orchestration
+    zorin_route: str                    # data_agent | zorinask
+    task: str                           # recommend_product | compare_product | check_stock | create_order | catalog_info | general_inquiry
+    missing_fields: List[str]           # Fields required to proceed (if any)

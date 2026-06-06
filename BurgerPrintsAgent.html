@@ -1,0 +1,766 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <!--
+      BurgerPrintsAgent — Single-file UI (HTML + Tailwind CDN)
+      Notes:
+      - Add your logo file next to this HTML as: "logo BP.png"
+      - This is a UI prototype (no backend). Tabs are toggled with a tiny vanilla JS snippet.
+    -->
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>BurgerPrintsAgent — Premium POD Assistant UI</title>
+
+    <!-- Google Font: Montserrat -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700;800&display=swap"
+      rel="stylesheet"
+    />
+
+    <!-- Font Awesome (icons) -->
+    <link
+      rel="stylesheet"
+      href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css"
+      integrity="sha512-SnH5WK+bZxgPHs44uWIX+LLJAJ9/2PkPKZ5QiAj6Ta86w+fsb2TkcmfRyVX3pBnMFcV7oQPJkl9QevSCWr3W6A=="
+      crossorigin="anonymous"
+      referrerpolicy="no-referrer"
+    />
+
+    <!-- Tailwind CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+
+    <!-- Tailwind config: strict palette + font -->
+    <script>
+      tailwind.config = {
+        theme: {
+          extend: {
+            fontFamily: {
+              sans: ["Montserrat", "ui-sans-serif", "system-ui", "Segoe UI", "Roboto", "Arial", "sans-serif"],
+            },
+            colors: {
+              brandBlue: "#0c51c6",
+              brandOrange: "#e96d20",
+              appBg: "#F4F5F7",
+              ink: "#0b1220", // dark slate-ish for contrast
+            },
+            boxShadow: {
+              soft: "0 10px 30px rgba(11, 18, 32, 0.10)",
+              lift: "0 14px 50px rgba(11, 18, 32, 0.14)",
+            },
+          },
+        },
+      };
+    </script>
+
+    <style>
+      /* Small polish: nicer scrollbars in the chat/history areas */
+      .nice-scrollbar::-webkit-scrollbar {
+        width: 10px;
+      }
+      .nice-scrollbar::-webkit-scrollbar-thumb {
+        background: rgba(11, 18, 32, 0.14);
+        border-radius: 999px;
+        border: 3px solid transparent;
+        background-clip: padding-box;
+      }
+      .nice-scrollbar::-webkit-scrollbar-track {
+        background: transparent;
+      }
+    </style>
+  </head>
+
+  <body class="font-sans bg-appBg text-ink">
+    <!-- Full-height split screen container -->
+    <main class="h-screen overflow-hidden">
+      <!-- Responsive behavior:
+        - Mobile: stack panels vertically
+        - Large: side-by-side 40:60 split
+      -->
+      <div class="h-full flex flex-col lg:flex-row gap-4 p-4">
+        <!-- =========================
+             LEFT PANEL — AI CHAT (40%)
+        ========================== -->
+        <section
+          class="lg:basis-2/5 h-full rounded-2xl bg-white shadow-soft border border-black/5 overflow-hidden flex flex-col"
+          aria-label="AI chat panel"
+        >
+          <!-- Header -->
+          <header class="px-5 py-4 border-b border-black/5 bg-white">
+            <div class="flex items-center justify-between gap-4">
+              <div class="flex items-center gap-3 min-w-0">
+                <!-- Logo placeholder (expects file: "logo BP.png") -->
+                <div class="h-10 w-10 rounded-xl bg-appBg border border-black/10 overflow-hidden flex items-center justify-center">
+                  <img
+                    src="logo BP.png"
+                    alt="BurgerPrintsAgent logo"
+                    class="h-full w-full object-cover"
+                    onerror="this.style.display='none'; this.parentElement.querySelector('.logo-fallback').style.display='flex';"
+                  />
+                  <div class="logo-fallback hidden items-center justify-center h-full w-full text-xs font-semibold text-ink/70">
+                    BP
+                  </div>
+                </div>
+
+                <div class="min-w-0">
+                  <div class="text-lg sm:text-xl font-extrabold tracking-tight leading-tight truncate">
+                    <span class="text-brandBlue">BURGER</span><span class="text-brandOrange">PRINTS</span><span class="text-ink">Agent</span>
+                  </div>
+                  <div class="text-xs text-ink/60 mt-0.5">
+                    AI agent for POD factory search, SKU optimization & confident sourcing.
+                  </div>
+                </div>
+              </div>
+
+              <!-- Status / quick actions -->
+              <div class="flex items-center gap-2">
+                <span class="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-appBg text-ink/70 text-xs font-semibold border border-black/5">
+                  <span class="h-2 w-2 rounded-full bg-emerald-500"></span>
+                  Live Assist
+                </span>
+              </div>
+            </div>
+          </header>
+
+          <!-- Chat history (scrollable) -->
+          <div class="flex-1 overflow-y-auto nice-scrollbar px-5 py-5 bg-gradient-to-b from-white to-appBg/60">
+            <!-- Conversation intro -->
+            <div class="flex items-start gap-3 mb-5">
+              <div class="h-9 w-9 rounded-xl bg-brandOrange/10 text-brandOrange flex items-center justify-center border border-brandOrange/20 shrink-0">
+                <i class="fa-solid fa-bolt"></i>
+              </div>
+              <div class="max-w-[32rem]">
+                <div class="text-sm font-semibold">BurgerPrintsAgent</div>
+                <div class="text-sm text-ink/70">
+                  Tell me your target product, market, and constraints. I’ll compare factories, recommend SKUs, and generate a push-ready configuration.
+                </div>
+              </div>
+            </div>
+
+            <!-- User message (right aligned) -->
+            <div class="flex justify-end mb-4">
+              <div class="max-w-[85%] sm:max-w-[75%]">
+                <div class="flex justify-end">
+                  <div class="rounded-2xl rounded-tr-sm bg-brandBlue text-white px-4 py-3 shadow-sm">
+                    <div class="text-sm leading-relaxed">
+                      I’m launching a premium unisex hoodie. Need the best balance of <span class="font-semibold">cost</span>, <span class="font-semibold">fast US shipping</span>, and <span class="font-semibold">high print quality</span>.
+                    </div>
+                  </div>
+                </div>
+                <div class="mt-1 text-[11px] text-ink/50 text-right">You • 10:22</div>
+              </div>
+            </div>
+
+            <!-- AI message (left aligned) -->
+            <div class="flex justify-start mb-5">
+              <div class="max-w-[92%] sm:max-w-[82%]">
+                <div class="flex items-start gap-3">
+                  <div class="h-9 w-9 rounded-xl bg-white border border-black/10 shadow-sm flex items-center justify-center shrink-0">
+                    <i class="fa-solid fa-robot text-ink/70"></i>
+                  </div>
+                  <div class="rounded-2xl rounded-tl-sm bg-white border border-black/5 px-4 py-3 shadow-sm">
+                    <div class="text-sm leading-relaxed text-ink/80">
+                      Got it. I’ll shortlist factories optimized for <span class="font-semibold">US delivery speed</span> and <span class="font-semibold">DTG / DTF clarity</span>.
+                      Here are 3 strong candidates—pick one, or I can auto-select based on your priority weighting.
+                    </div>
+
+                    <!-- Inline factory cards inside AI message -->
+                    <div class="mt-4 grid grid-cols-1 sm:grid-cols-3 gap-3">
+                      <!-- Card 1 -->
+                      <div class="rounded-xl border border-black/10 bg-appBg/50 p-3 hover:shadow-sm transition">
+                        <div class="flex items-start justify-between gap-2">
+                          <div>
+                            <div class="text-xs font-bold tracking-tight">Northstar Prints</div>
+                            <div class="text-[11px] text-ink/60 mt-0.5">
+                              <i class="fa-solid fa-location-dot text-brandOrange mr-1"></i> Nevada, US
+                            </div>
+                          </div>
+                          <span class="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-brandOrange/10 text-brandOrange text-[11px] font-semibold border border-brandOrange/20">
+                            <i class="fa-solid fa-bolt"></i> Fastest
+                          </span>
+                        </div>
+                        <div class="mt-3 flex items-center justify-between text-[11px] text-ink/70">
+                          <span>Base cost</span><span class="font-semibold">$15.20</span>
+                        </div>
+                        <div class="mt-2 flex items-center justify-between text-[11px] text-ink/70">
+                          <span>Ships in</span><span class="font-semibold">2–4 days</span>
+                        </div>
+                        <div class="mt-2 flex items-center justify-between text-[11px] text-ink/70">
+                          <span>Quality</span>
+                          <span class="font-semibold">9.2 <span class="text-ink/40">/10</span></span>
+                        </div>
+                      </div>
+
+                      <!-- Card 2 -->
+                      <div class="rounded-xl border border-black/10 bg-white p-3 hover:shadow-sm transition">
+                        <div class="flex items-start justify-between gap-2">
+                          <div>
+                            <div class="text-xs font-bold tracking-tight">Atlas POD Works</div>
+                            <div class="text-[11px] text-ink/60 mt-0.5">
+                              <i class="fa-solid fa-location-dot text-brandOrange mr-1"></i> Texas, US
+                            </div>
+                          </div>
+                          <span class="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-brandOrange/10 text-brandOrange text-[11px] font-semibold border border-brandOrange/20">
+                            <i class="fa-solid fa-tag"></i> Best Value
+                          </span>
+                        </div>
+                        <div class="mt-3 flex items-center justify-between text-[11px] text-ink/70">
+                          <span>Base cost</span><span class="font-semibold">$14.10</span>
+                        </div>
+                        <div class="mt-2 flex items-center justify-between text-[11px] text-ink/70">
+                          <span>Ships in</span><span class="font-semibold">3–6 days</span>
+                        </div>
+                        <div class="mt-2 flex items-center justify-between text-[11px] text-ink/70">
+                          <span>Quality</span>
+                          <span class="font-semibold">8.8 <span class="text-ink/40">/10</span></span>
+                        </div>
+                      </div>
+
+                      <!-- Card 3 -->
+                      <div class="rounded-xl border border-black/10 bg-white p-3 hover:shadow-sm transition">
+                        <div class="flex items-start justify-between gap-2">
+                          <div>
+                            <div class="text-xs font-bold tracking-tight">Kyoto Ink Lab</div>
+                            <div class="text-[11px] text-ink/60 mt-0.5">
+                              <i class="fa-solid fa-location-dot text-brandOrange mr-1"></i> Osaka, JP
+                            </div>
+                          </div>
+                          <span class="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-brandOrange/10 text-brandOrange text-[11px] font-semibold border border-brandOrange/20">
+                            <i class="fa-solid fa-award"></i> Top Quality
+                          </span>
+                        </div>
+                        <div class="mt-3 flex items-center justify-between text-[11px] text-ink/70">
+                          <span>Base cost</span><span class="font-semibold">$16.40</span>
+                        </div>
+                        <div class="mt-2 flex items-center justify-between text-[11px] text-ink/70">
+                          <span>Ships in</span><span class="font-semibold">6–9 days</span>
+                        </div>
+                        <div class="mt-2 flex items-center justify-between text-[11px] text-ink/70">
+                          <span>Quality</span>
+                          <span class="font-semibold">9.6 <span class="text-ink/40">/10</span></span>
+                        </div>
+                      </div>
+                    </div>
+
+                    <!-- Quick actions -->
+                    <div class="mt-4 flex flex-wrap gap-2">
+                      <button class="px-3 py-2 rounded-xl bg-appBg border border-black/10 text-xs font-semibold hover:bg-white transition">
+                        <i class="fa-solid fa-sliders text-ink/60 mr-2"></i> Set priority weights
+                      </button>
+                      <button class="px-3 py-2 rounded-xl bg-white border border-black/10 text-xs font-semibold hover:bg-appBg transition">
+                        <i class="fa-solid fa-wand-magic-sparkles text-brandOrange mr-2"></i> Auto-pick best overall
+                      </button>
+                    </div>
+                  </div>
+                </div>
+                <div class="mt-1 text-[11px] text-ink/50">Agent • 10:23</div>
+              </div>
+            </div>
+
+            <!-- User message 2 -->
+            <div class="flex justify-end mb-4">
+              <div class="max-w-[85%] sm:max-w-[75%]">
+                <div class="rounded-2xl rounded-tr-sm bg-brandBlue text-white px-4 py-3 shadow-sm">
+                  <div class="text-sm leading-relaxed">
+                    Choose the best value, but don’t sacrifice print clarity. Also recommend an ideal factory SKU.
+                  </div>
+                </div>
+                <div class="mt-1 text-[11px] text-ink/50 text-right">You • 10:24</div>
+              </div>
+            </div>
+
+            <!-- AI message 2 -->
+            <div class="flex justify-start mb-10">
+              <div class="max-w-[92%] sm:max-w-[82%]">
+                <div class="flex items-start gap-3">
+                  <div class="h-9 w-9 rounded-xl bg-white border border-black/10 shadow-sm flex items-center justify-center shrink-0">
+                    <i class="fa-solid fa-robot text-ink/70"></i>
+                  </div>
+                  <div class="rounded-2xl rounded-tl-sm bg-white border border-black/5 px-4 py-3 shadow-sm">
+                    <div class="text-sm leading-relaxed text-ink/80">
+                      Recommendation: <span class="font-semibold">Atlas POD Works</span> (best value with reliably crisp prints).
+                      Next, I’ll configure a hoodie SKU optimized for premium feel + strong print surface:
+                    </div>
+                    <ul class="mt-3 space-y-2 text-sm text-ink/75">
+                      <li class="flex gap-2">
+                        <span class="mt-0.5 text-brandOrange"><i class="fa-solid fa-bolt"></i></span>
+                        <span><span class="font-semibold">Fabric:</span> 80/20 cotton blend, brushed fleece interior</span>
+                      </li>
+                      <li class="flex gap-2">
+                        <span class="mt-0.5 text-brandOrange"><i class="fa-solid fa-bolt"></i></span>
+                        <span><span class="font-semibold">Print Method:</span> DTF for vibrant colors + durability</span>
+                      </li>
+                      <li class="flex gap-2">
+                        <span class="mt-0.5 text-brandOrange"><i class="fa-solid fa-bolt"></i></span>
+                        <span><span class="font-semibold">Suggested SKU:</span> AT-HDY-450gsm (Premium Heavyweight)</span>
+                      </li>
+                    </ul>
+                    <div class="mt-4 rounded-xl bg-brandOrange/10 border border-brandOrange/20 p-3">
+                      <div class="flex items-start gap-3">
+                        <div class="h-9 w-9 rounded-lg bg-brandOrange text-white flex items-center justify-center shrink-0 shadow-sm">
+                          <i class="fa-solid fa-circle-check"></i>
+                        </div>
+                        <div>
+                          <div class="text-sm font-bold">Next step</div>
+                          <div class="text-sm text-ink/70">
+                            Review the <span class="font-semibold">Factory Comparison</span> tab and tweak variants in <span class="font-semibold">SKU Configuration & Preview</span>.
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                <div class="mt-1 text-[11px] text-ink/50">Agent • 10:25</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Input area (sticky bottom) -->
+          <div class="border-t border-black/5 bg-white">
+            <div class="p-4">
+              <div class="flex items-end gap-2">
+                <!-- Left utility buttons -->
+                <button
+                  class="h-11 w-11 rounded-xl border border-black/10 bg-white hover:bg-appBg transition flex items-center justify-center text-ink/70"
+                  aria-label="Upload attachment"
+                  title="Upload"
+                >
+                  <i class="fa-solid fa-paperclip"></i>
+                </button>
+                <button
+                  class="h-11 w-11 rounded-xl border border-black/10 bg-white hover:bg-appBg transition flex items-center justify-center text-ink/70"
+                  aria-label="Voice input"
+                  title="Voice"
+                >
+                  <i class="fa-solid fa-microphone"></i>
+                </button>
+
+                <!-- Text input -->
+                <div class="flex-1">
+                  <label class="sr-only" for="chatInput">Message</label>
+                  <div class="relative">
+                    <input
+                      id="chatInput"
+                      type="text"
+                      placeholder="Ask BurgerPrintsAgent to compare factories, optimize pricing, or configure SKUs…"
+                      class="w-full h-11 rounded-xl border border-black/10 bg-appBg/40 px-4 pr-12 text-sm outline-none focus:ring-4 focus:ring-brandBlue/15 focus:border-brandBlue/40"
+                    />
+                    <span class="absolute right-3 top-1/2 -translate-y-1/2 text-ink/35 text-xs font-semibold">⌘⏎</span>
+                  </div>
+                </div>
+
+                <!-- Send button -->
+                <button
+                  class="h-11 px-4 rounded-xl bg-brandBlue text-white font-semibold text-sm shadow-sm hover:brightness-110 active:brightness-95 transition"
+                  aria-label="Send message"
+                >
+                  <i class="fa-solid fa-paper-plane mr-2"></i> Send
+                </button>
+              </div>
+              <div class="mt-2 text-[11px] text-ink/50">
+                Tip: Add constraints like MOQ, max base cost, target margin, and preferred regions.
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- =========================
+             RIGHT PANEL — CANVAS (60%)
+        ========================== -->
+        <section
+          class="lg:basis-3/5 h-full rounded-2xl bg-white shadow-soft border border-black/5 overflow-hidden flex flex-col"
+          aria-label="Dynamic canvas panel"
+        >
+          <!-- Tabs header -->
+          <header class="px-5 pt-5 pb-3 border-b border-black/5 bg-white">
+            <div class="flex items-start justify-between gap-3">
+              <div>
+                <h2 class="text-lg sm:text-xl font-extrabold tracking-tight">Decision Canvas</h2>
+                <p class="text-sm text-ink/60 mt-1">
+                  Compare factories, configure a SKU, and push a ready-to-sell listing.
+                </p>
+              </div>
+              <div class="hidden sm:flex items-center gap-2">
+                <span class="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-appBg text-ink/70 text-xs font-semibold border border-black/5">
+                  <i class="fa-solid fa-shield-halved text-brandOrange"></i> Data-backed picks
+                </span>
+              </div>
+            </div>
+
+            <!-- Tabs -->
+            <nav class="mt-4" aria-label="Canvas tabs">
+              <div class="inline-flex rounded-2xl bg-appBg p-1 border border-black/5">
+                <button
+                  class="tab-btn px-4 py-2 rounded-xl text-sm font-semibold transition"
+                  data-tab="comparison"
+                  aria-selected="true"
+                >
+                  <i class="fa-solid fa-table-columns mr-2 text-ink/60"></i>
+                  Factory Comparison
+                </button>
+                <button
+                  class="tab-btn px-4 py-2 rounded-xl text-sm font-semibold transition"
+                  data-tab="sku"
+                  aria-selected="false"
+                >
+                  <i class="fa-solid fa-cubes mr-2 text-ink/60"></i>
+                  SKU Configuration & Preview
+                </button>
+              </div>
+            </nav>
+          </header>
+
+          <!-- Content area -->
+          <div class="flex-1 overflow-y-auto nice-scrollbar bg-gradient-to-b from-white to-appBg/60">
+            <!-- TAB 1: Factory Comparison -->
+            <section id="tab-comparison" class="tab-panel p-5">
+              <div class="grid grid-cols-1 xl:grid-cols-3 gap-4">
+                <!-- Summary card -->
+                <div class="xl:col-span-1 rounded-2xl bg-white border border-black/5 shadow-sm p-4">
+                  <div class="flex items-start justify-between gap-3">
+                    <div>
+                      <div class="text-sm font-bold">Best pick (value + clarity)</div>
+                      <div class="text-sm text-ink/60 mt-1">Atlas POD Works — strong balance across metrics.</div>
+                    </div>
+                    <div class="h-10 w-10 rounded-xl bg-brandOrange text-white flex items-center justify-center shadow-sm">
+                      <i class="fa-solid fa-trophy"></i>
+                    </div>
+                  </div>
+                  <div class="mt-4 grid grid-cols-3 gap-2">
+                    <div class="rounded-xl bg-appBg/60 border border-black/5 p-3">
+                      <div class="text-[11px] text-ink/60">Base</div>
+                      <div class="text-sm font-extrabold">$14.10</div>
+                    </div>
+                    <div class="rounded-xl bg-appBg/60 border border-black/5 p-3">
+                      <div class="text-[11px] text-ink/60">Ship</div>
+                      <div class="text-sm font-extrabold">3–6d</div>
+                    </div>
+                    <div class="rounded-xl bg-appBg/60 border border-black/5 p-3">
+                      <div class="text-[11px] text-ink/60">Quality</div>
+                      <div class="text-sm font-extrabold">8.8</div>
+                    </div>
+                  </div>
+                  <button class="mt-4 w-full h-11 rounded-xl bg-brandBlue text-white font-semibold hover:brightness-110 transition">
+                    <i class="fa-solid fa-file-circle-check mr-2"></i> Generate sourcing report
+                  </button>
+                </div>
+
+                <!-- Comparison table -->
+                <div class="xl:col-span-2 rounded-2xl bg-white border border-black/5 shadow-sm p-4 overflow-hidden">
+                  <div class="flex items-center justify-between gap-3">
+                    <div>
+                      <div class="text-sm font-bold">Factory matrix</div>
+                      <div class="text-sm text-ink/60 mt-1">Compare key metrics for hoodie production.</div>
+                    </div>
+                    <div class="flex items-center gap-2 text-xs text-ink/60">
+                      <span class="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-appBg border border-black/5">
+                        <span class="h-2 w-2 rounded-full bg-brandOrange"></span> Winner
+                      </span>
+                    </div>
+                  </div>
+
+                  <div class="mt-4 overflow-x-auto">
+                    <table class="w-full text-left border-separate border-spacing-0">
+                      <thead>
+                        <tr class="text-xs text-ink/60">
+                          <th class="py-3 px-3 font-semibold border-b border-black/10">Factory</th>
+                          <th class="py-3 px-3 font-semibold border-b border-black/10">Base Cost</th>
+                          <th class="py-3 px-3 font-semibold border-b border-black/10">Shipping Time</th>
+                          <th class="py-3 px-3 font-semibold border-b border-black/10">Quality Score</th>
+                          <th class="py-3 px-3 font-semibold border-b border-black/10">Notes</th>
+                        </tr>
+                      </thead>
+                      <tbody class="text-sm">
+                        <tr class="bg-white hover:bg-appBg/40 transition">
+                          <td class="py-3 px-3 border-b border-black/5">
+                            <div class="font-bold">Northstar Prints</div>
+                            <div class="text-xs text-ink/60">Nevada, US</div>
+                          </td>
+                          <td class="py-3 px-3 border-b border-black/5">$15.20</td>
+                          <td class="py-3 px-3 border-b border-black/5">2–4 days</td>
+                          <td class="py-3 px-3 border-b border-black/5">
+                            <span class="inline-flex items-center gap-2">
+                              <span class="h-2 w-2 rounded-full bg-emerald-500"></span>
+                              9.2 / 10
+                            </span>
+                          </td>
+                          <td class="py-3 px-3 border-b border-black/5 text-ink/70">
+                            Fastest US fulfillment. Slightly higher base.
+                          </td>
+                        </tr>
+
+                        <!-- Winner row highlighted with brand orange -->
+                        <tr class="bg-brandOrange/10 hover:bg-brandOrange/15 transition">
+                          <td class="py-3 px-3 border-b border-brandOrange/20">
+                            <div class="flex items-center gap-2">
+                              <div class="font-extrabold">Atlas POD Works</div>
+                              <span class="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-brandOrange text-white text-[11px] font-bold">
+                                <i class="fa-solid fa-trophy"></i> Winner
+                              </span>
+                            </div>
+                            <div class="text-xs text-ink/70">Texas, US</div>
+                          </td>
+                          <td class="py-3 px-3 border-b border-brandOrange/20 font-extrabold">$14.10</td>
+                          <td class="py-3 px-3 border-b border-brandOrange/20 font-semibold">3–6 days</td>
+                          <td class="py-3 px-3 border-b border-brandOrange/20 font-semibold">8.8 / 10</td>
+                          <td class="py-3 px-3 border-b border-brandOrange/20 text-ink/80">
+                            Best value while keeping crisp prints (DTF).
+                          </td>
+                        </tr>
+
+                        <tr class="bg-white hover:bg-appBg/40 transition">
+                          <td class="py-3 px-3 border-b border-black/5">
+                            <div class="font-bold">Kyoto Ink Lab</div>
+                            <div class="text-xs text-ink/60">Osaka, JP</div>
+                          </td>
+                          <td class="py-3 px-3 border-b border-black/5">$16.40</td>
+                          <td class="py-3 px-3 border-b border-black/5">6–9 days</td>
+                          <td class="py-3 px-3 border-b border-black/5">
+                            <span class="inline-flex items-center gap-2">
+                              <span class="h-2 w-2 rounded-full bg-emerald-500"></span>
+                              9.6 / 10
+                            </span>
+                          </td>
+                          <td class="py-3 px-3 border-b border-black/5 text-ink/70">
+                            Top-tier output; slower shipping to US.
+                          </td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
+
+                  <!-- Bottom actions -->
+                  <div class="mt-4 flex flex-col sm:flex-row gap-2">
+                    <button class="h-11 px-4 rounded-xl bg-white border border-black/10 font-semibold text-sm hover:bg-appBg transition">
+                      <i class="fa-solid fa-filter mr-2 text-ink/60"></i> Refine filters
+                    </button>
+                    <button class="h-11 px-4 rounded-xl bg-brandBlue text-white font-semibold text-sm hover:brightness-110 transition sm:ml-auto">
+                      <i class="fa-solid fa-check mr-2"></i> Select Atlas POD Works
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </section>
+
+            <!-- TAB 2: SKU Configuration & Preview -->
+            <section id="tab-sku" class="tab-panel p-5 hidden">
+              <div class="grid grid-cols-1 xl:grid-cols-2 gap-4">
+                <!-- Mockup / 3D placeholder -->
+                <div class="rounded-2xl bg-white border border-black/5 shadow-sm p-4">
+                  <div class="flex items-start justify-between gap-3">
+                    <div>
+                      <div class="text-sm font-bold">Product mockup</div>
+                      <div class="text-sm text-ink/60 mt-1">3D preview placeholder (connect your renderer later).</div>
+                    </div>
+                    <button class="h-10 w-10 rounded-xl border border-black/10 bg-white hover:bg-appBg transition text-ink/70" title="Reset view" aria-label="Reset view">
+                      <i class="fa-solid fa-rotate-right"></i>
+                    </button>
+                  </div>
+
+                  <!-- Visual mockup placeholder -->
+                  <div class="mt-4 aspect-[4/3] rounded-2xl border border-black/10 overflow-hidden relative bg-gradient-to-br from-appBg to-white">
+                    <!-- "3D" stage -->
+                    <div class="absolute inset-0 flex items-center justify-center p-6">
+                      <div class="w-full h-full rounded-2xl bg-white/70 border border-black/10 shadow-soft relative overflow-hidden">
+                        <!-- Decorative glow -->
+                        <div class="absolute -top-24 -right-24 w-64 h-64 rounded-full bg-brandBlue/15 blur-2xl"></div>
+                        <div class="absolute -bottom-24 -left-24 w-64 h-64 rounded-full bg-brandOrange/15 blur-2xl"></div>
+
+                        <div class="absolute inset-0 flex items-center justify-center">
+                          <div class="text-center">
+                            <div class="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-white border border-black/10 text-xs font-semibold">
+                              <i class="fa-solid fa-cube text-brandOrange"></i> 3D / Mockup Stage
+                            </div>
+                            <div class="mt-4 text-2xl sm:text-3xl font-extrabold tracking-tight">
+                              <span class="text-brandBlue">BURGER</span><span class="text-brandOrange">PRINTS</span>
+                            </div>
+                            <div class="mt-2 text-sm text-ink/60">
+                              Replace with your hoodie render, images, or live customization preview.
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <!-- Mockup metadata -->
+                  <div class="mt-4 grid grid-cols-3 gap-2">
+                    <div class="rounded-xl bg-appBg/60 border border-black/5 p-3">
+                      <div class="text-[11px] text-ink/60">Method</div>
+                      <div class="text-sm font-extrabold">DTF</div>
+                    </div>
+                    <div class="rounded-xl bg-appBg/60 border border-black/5 p-3">
+                      <div class="text-[11px] text-ink/60">Fabric</div>
+                      <div class="text-sm font-extrabold">450gsm</div>
+                    </div>
+                    <div class="rounded-xl bg-appBg/60 border border-black/5 p-3">
+                      <div class="text-[11px] text-ink/60">SKU</div>
+                      <div class="text-sm font-extrabold">AT-HDY</div>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Controls / configuration -->
+                <div class="rounded-2xl bg-white border border-black/5 shadow-sm p-4">
+                  <div class="flex items-start justify-between gap-3">
+                    <div>
+                      <div class="text-sm font-bold">Variant controls</div>
+                      <div class="text-sm text-ink/60 mt-1">Configure sizes, colors, pricing & listing details.</div>
+                    </div>
+                    <span class="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-brandBlue/10 text-brandBlue text-xs font-semibold border border-brandBlue/20">
+                      <i class="fa-solid fa-wand-magic-sparkles"></i> Optimized
+                    </span>
+                  </div>
+
+                  <!-- Factory + SKU -->
+                  <div class="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div class="rounded-xl border border-black/10 bg-appBg/40 p-3">
+                      <div class="text-[11px] text-ink/60">Factory</div>
+                      <div class="mt-1 font-extrabold">Atlas POD Works</div>
+                      <div class="text-xs text-ink/60 mt-1"><i class="fa-solid fa-location-dot text-brandOrange mr-1"></i> Texas, US</div>
+                    </div>
+                    <div class="rounded-xl border border-black/10 bg-white p-3">
+                      <div class="text-[11px] text-ink/60">Factory SKU</div>
+                      <div class="mt-1 font-extrabold">AT-HDY-450gsm</div>
+                      <div class="text-xs text-ink/60 mt-1">Premium Heavyweight Hoodie</div>
+                    </div>
+                  </div>
+
+                  <!-- Size dropdown -->
+                  <div class="mt-4">
+                    <label for="size" class="text-sm font-semibold">Size</label>
+                    <div class="mt-2 relative">
+                      <select
+                        id="size"
+                        class="w-full h-11 rounded-xl border border-black/10 bg-white px-4 text-sm outline-none focus:ring-4 focus:ring-brandBlue/15 focus:border-brandBlue/40"
+                      >
+                        <option selected>Unisex S</option>
+                        <option>Unisex M</option>
+                        <option>Unisex L</option>
+                        <option>Unisex XL</option>
+                        <option>Unisex 2XL</option>
+                      </select>
+                      <i class="fa-solid fa-chevron-down absolute right-4 top-1/2 -translate-y-1/2 text-ink/35 pointer-events-none"></i>
+                    </div>
+                  </div>
+
+                  <!-- Color swatches -->
+                  <div class="mt-4">
+                    <div class="flex items-center justify-between gap-3">
+                      <label class="text-sm font-semibold">Color</label>
+                      <div class="text-xs text-ink/60">Optimized for print pop</div>
+                    </div>
+                    <div class="mt-2 flex flex-wrap gap-2">
+                      <!-- Swatches are buttons for a “real” feeling UI -->
+                      <button class="h-10 px-3 rounded-xl border border-black/10 bg-white hover:bg-appBg transition text-sm font-semibold flex items-center gap-2">
+                        <span class="h-4 w-4 rounded-full bg-black border border-black/20"></span> Black
+                      </button>
+                      <button class="h-10 px-3 rounded-xl border border-black/10 bg-white hover:bg-appBg transition text-sm font-semibold flex items-center gap-2">
+                        <span class="h-4 w-4 rounded-full bg-slate-200 border border-black/10"></span> Ash
+                      </button>
+                      <button class="h-10 px-3 rounded-xl border border-black/10 bg-white hover:bg-appBg transition text-sm font-semibold flex items-center gap-2">
+                        <span class="h-4 w-4 rounded-full bg-indigo-600 border border-black/10"></span> Indigo
+                      </button>
+                      <button class="h-10 px-3 rounded-xl border border-black/10 bg-white hover:bg-appBg transition text-sm font-semibold flex items-center gap-2">
+                        <span class="h-4 w-4 rounded-full bg-amber-500 border border-black/10"></span> Gold
+                      </button>
+                    </div>
+                  </div>
+
+                  <!-- Pricing block -->
+                  <div class="mt-4 grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    <div class="rounded-xl bg-appBg/60 border border-black/5 p-3">
+                      <div class="text-[11px] text-ink/60">Base cost</div>
+                      <div class="text-lg font-extrabold">$14.10</div>
+                      <div class="text-[11px] text-ink/50 mt-0.5">incl. standard print</div>
+                    </div>
+                    <div class="rounded-xl bg-appBg/60 border border-black/5 p-3">
+                      <div class="text-[11px] text-ink/60">Suggested price</div>
+                      <div class="text-lg font-extrabold">$44.00</div>
+                      <div class="text-[11px] text-ink/50 mt-0.5">target premium margin</div>
+                    </div>
+                    <div class="rounded-xl bg-white border border-black/10 p-3">
+                      <div class="text-[11px] text-ink/60">Est. profit</div>
+                      <div class="text-lg font-extrabold text-emerald-600">$22.30</div>
+                      <div class="text-[11px] text-ink/50 mt-0.5">after fees estimate</div>
+                    </div>
+                  </div>
+
+                  <!-- CTA -->
+                  <div class="mt-4 flex flex-col sm:flex-row gap-2">
+                    <button class="h-11 px-4 rounded-xl bg-white border border-black/10 font-semibold text-sm hover:bg-appBg transition">
+                      <i class="fa-solid fa-copy mr-2 text-ink/60"></i> Copy listing copy
+                    </button>
+                    <button class="h-11 px-4 rounded-xl bg-brandBlue text-white font-semibold text-sm shadow-sm hover:brightness-110 active:brightness-95 transition sm:ml-auto">
+                      <i class="fa-solid fa-store mr-2"></i> Push to Store
+                    </button>
+                  </div>
+
+                  <div class="mt-3 text-[11px] text-ink/50">
+                    “Push to Store” is a UI placeholder — connect your Shopify/Etsy integration later.
+                  </div>
+                </div>
+              </div>
+            </section>
+          </div>
+
+          <!-- Footer strip -->
+          <footer class="px-5 py-3 border-t border-black/5 bg-white">
+            <div class="flex flex-col sm:flex-row sm:items-center gap-2 justify-between">
+              <div class="text-xs text-ink/60">
+                <span class="font-semibold">BurgerPrintsAgent</span> • premium sourcing UI prototype
+              </div>
+              <div class="flex items-center gap-2 text-xs">
+                <span class="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-appBg border border-black/5 text-ink/70">
+                  <i class="fa-solid fa-lock text-brandOrange"></i> Secure by design
+                </span>
+              </div>
+            </div>
+          </footer>
+        </section>
+      </div>
+    </main>
+
+    <script>
+      // ==========================================================
+      // Minimal JS: tab switching (interactive-looking, production-ish)
+      // ==========================================================
+      const tabButtons = Array.from(document.querySelectorAll(".tab-btn"));
+      const panels = {
+        comparison: document.getElementById("tab-comparison"),
+        sku: document.getElementById("tab-sku"),
+      };
+
+      function setActiveTab(tabName) {
+        tabButtons.forEach((btn) => {
+          const isActive = btn.dataset.tab === tabName;
+          btn.setAttribute("aria-selected", String(isActive));
+          btn.classList.toggle("bg-white", isActive);
+          btn.classList.toggle("shadow-sm", isActive);
+          btn.classList.toggle("text-ink", isActive);
+          btn.classList.toggle("text-ink/70", !isActive);
+        });
+        Object.entries(panels).forEach(([name, el]) => {
+          el.classList.toggle("hidden", name !== tabName);
+        });
+      }
+
+      tabButtons.forEach((btn) => btn.addEventListener("click", () => setActiveTab(btn.dataset.tab)));
+
+      // Initialize
+      setActiveTab("comparison");
+
+      // Keyboard nicety: Cmd/Ctrl+Enter focuses send behavior (UI-only)
+      const chatInput = document.getElementById("chatInput");
+      chatInput?.addEventListener("keydown", (e) => {
+        const isCmdEnter = (e.metaKey || e.ctrlKey) && e.key === "Enter";
+        if (isCmdEnter) {
+          // Prototype behavior: just clear input to simulate sending.
+          chatInput.value = "";
+        }
+      });
+    </script>
+  </body>
+</html>
+
