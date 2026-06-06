@@ -52,6 +52,14 @@ class DataAgent:
             except Exception as e:
                 logger.warning(f"[DataAgent] OOS fetch failed: {e}")
                 out_of_stock_ids = []
+                return {
+                    "out_of_stock_ids": out_of_stock_ids,
+                    "inventory_snapshot": {
+                        "out_of_stock_ids": out_of_stock_ids,
+                        "source": "error",
+                        "count": 0,
+                    },
+                }
         else:
             logger.info(f"[DataAgent] OOS Cache HIT - {len(out_of_stock_ids)} items")
 

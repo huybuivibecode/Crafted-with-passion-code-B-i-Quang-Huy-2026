@@ -1,52 +1,50 @@
 /* ============================================================
    BurgerPrintsAgent - Design System
-   Dark mode, glassmorphism, premium aesthetics
+   Premium AI SaaS aesthetic (light) aligned with BurgerPrintsAgent.html
    ============================================================ */
-
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
 
 /* ---- CSS Variables ---- */
 :root {
     /* Brand Colors */
-    --brand-orange: #FF6B2C;
-    --brand-orange-light: #FF8C5A;
-    --brand-orange-dark: #E05520;
-    --brand-yellow: #FFB830;
+    --brand-blue: #0c51c6;
+    --brand-orange: #e96d20;
+    --brand-orange-light: #f08b4c;
+    --brand-orange-dark: #cf5d17;
 
-    /* Dark palette */
-    --bg-base: #0A0B0F;
-    --bg-surface: #12141A;
-    --bg-card: #1A1D26;
-    --bg-card-hover: #212538;
-    --bg-input: #1E2130;
-    --bg-sidebar: #0E1018;
+    /* Light palette */
+    --bg-base: #F4F5F7;
+    --bg-surface: #ffffff;
+    --bg-card: #ffffff;
+    --bg-card-hover: #f6f7f9;
+    --bg-input: rgba(244, 245, 247, 0.60);
+    --bg-sidebar: #ffffff;
 
-    /* Glassmorphism */
-    --glass-bg: rgba(255, 107, 44, 0.06);
-    --glass-border: rgba(255, 107, 44, 0.15);
-    --glass-blur: blur(16px);
+    /* Soft glass */
+    --glass-bg: rgba(12, 81, 198, 0.04);
+    --glass-border: rgba(11, 18, 32, 0.08);
+    --glass-blur: blur(14px);
 
     /* Text */
-    --text-primary: #F0F2FA;
-    --text-secondary: #8B92B8;
-    --text-muted: #4A5070;
-    --text-orange: #FF7A3D;
+    --text-primary: #0b1220;
+    --text-secondary: rgba(11, 18, 32, 0.70);
+    --text-muted: rgba(11, 18, 32, 0.55);
+    --text-orange: var(--brand-orange);
 
     /* Borders */
-    --border-subtle: rgba(255, 255, 255, 0.06);
-    --border-card: rgba(255, 255, 255, 0.08);
-    --border-focus: rgba(255, 107, 44, 0.5);
+    --border-subtle: rgba(11, 18, 32, 0.08);
+    --border-card: rgba(11, 18, 32, 0.10);
+    --border-focus: rgba(12, 81, 198, 0.28);
 
     /* Status colors */
     --success: #22C55E;
     --warning: #F59E0B;
     --error: #EF4444;
-    --info: #3B82F6;
+    --info: #0c51c6;
 
     /* Badge colors */
-    --badge-us: #3B82F6;
-    --badge-eu: #8B5CF6;
-    --badge-china: #EF4444;
+    --badge-us: #0c51c6;
+    --badge-eu: #6D28D9;
+    --badge-china: #DC2626;
     --badge-dtg: #22C55E;
     --badge-sub: #F59E0B;
     --badge-fast: #10B981;
@@ -60,10 +58,10 @@
     --radius-lg: 16px;
 
     /* Shadows */
-    --shadow-sm: 0 2px 8px rgba(0,0,0,0.3);
-    --shadow-md: 0 4px 20px rgba(0,0,0,0.4);
-    --shadow-lg: 0 8px 40px rgba(0,0,0,0.5);
-    --shadow-orange: 0 0 20px rgba(255, 107, 44, 0.2);
+    --shadow-sm: 0 10px 30px rgba(11, 18, 32, 0.10);
+    --shadow-md: 0 14px 50px rgba(11, 18, 32, 0.14);
+    --shadow-lg: 0 20px 70px rgba(11, 18, 32, 0.18);
+    --shadow-orange: 0 12px 30px rgba(233, 109, 32, 0.18);
 
     /* Transitions */
     --trans-fast: 150ms ease;
@@ -77,7 +75,7 @@
 html { font-size: 16px; scroll-behavior: smooth; }
 
 body {
-    font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+    font-family: 'Montserrat', -apple-system, BlinkMacSystemFont, sans-serif;
     background-color: var(--bg-base);
     color: var(--text-primary);
     line-height: 1.6;
@@ -91,8 +89,8 @@ body::before {
     position: fixed;
     inset: 0;
     background:
-        radial-gradient(ellipse 80% 50% at 20% -10%, rgba(255,107,44,0.12) 0%, transparent 60%),
-        radial-gradient(ellipse 60% 40% at 80% 110%, rgba(255,184,48,0.08) 0%, transparent 60%);
+        radial-gradient(ellipse 80% 50% at 20% -10%, rgba(12, 81, 198, 0.10) 0%, transparent 60%),
+        radial-gradient(ellipse 60% 40% at 80% 110%, rgba(233, 109, 32, 0.10) 0%, transparent 60%);
     pointer-events: none;
     z-index: 0;
 }
@@ -104,6 +102,15 @@ body::before {
     display: flex;
     flex-direction: column;
 }
+
+.nice-scrollbar::-webkit-scrollbar { width: 10px; }
+.nice-scrollbar::-webkit-scrollbar-thumb {
+    background: rgba(11, 18, 32, 0.16);
+    border-radius: 999px;
+    border: 3px solid transparent;
+    background-clip: padding-box;
+}
+.nice-scrollbar::-webkit-scrollbar-track { background: transparent; }
 
 /* ---- Header ---- */
 .header {
@@ -1742,5 +1749,20 @@ body::before {
     .inline-product-strip { grid-template-columns: 1fr; }
     .modal-card { max-width: 100%; margin: 0; border-radius: var(--radius) var(--radius) 0 0; }
     .form-row { grid-template-columns: 1fr; }
+}
+
+.bp-compact-pane #bp-chat-scroll {
+    padding-left: 16px !important;
+    padding-right: 16px !important;
+    padding-top: 16px !important;
+    padding-bottom: 16px !important;
+}
+
+.bp-compact-pane #bp-canvas-content {
+    padding: 16px !important;
+}
+
+.bp-compact-grid {
+    grid-template-columns: 1fr !important;
 }
 

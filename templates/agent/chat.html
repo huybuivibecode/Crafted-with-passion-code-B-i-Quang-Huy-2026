@@ -4,170 +4,340 @@
 {% block title %}BurgerPrintsAgent - AI Fulfillment Advisor{% endblock %}
 
 {% block content %}
-<!-- Header -->
-<header class="header">
-    <div class="header-inner">
-        <div class="logo">
-            <div class="logo-icon">🍔</div>
-            <div class="logo-text">
-                <span class="logo-title">BurgerPrints</span>
-                <span class="logo-sub">AI Advisor</span>
-            </div>
-        </div>
-        <div class="header-actions">
-            <a href="{% url 'graph' %}" class="header-graph-link" title="Graph Visualization">📊 Graph</a>
-            <div class="status-dot" id="status-indicator" title="Kết nối API"></div>
-            <span class="status-label" id="status-label">Đang kết nối...</span>
-        </div>
-    </div>
-</header>
-
-<!-- Main layout -->
-<main class="main-layout">
-
-    <!-- Sidebar: Quick filters -->
-    <aside class="sidebar">
-        <div class="sidebar-section">
-            <h3 class="sidebar-title">🚀 Gợi ý nhanh</h3>
-            <div class="quick-prompts" id="quick-prompts">
-                <button class="quick-btn" data-prompt="Tôi muốn bán áo thun cho thị trường Mỹ">🇺🇸 Thị trường Mỹ</button>
-                <button class="quick-btn" data-prompt="Tôi muốn ship sang Đức nhanh nhất">🇩🇪 Ship EU nhanh nhất</button>
-                <button class="quick-btn" data-prompt="So sánh Gildan 5000 và Gildan 64000">⚖️ So sánh G5000 vs G64000</button>
-                <button class="quick-btn" data-prompt="Tôi mới bán POD. Nên bắt đầu với sản phẩm nào?">🌱 Mới bán POD</button>
-                <button class="quick-btn" data-prompt="Sản phẩm nào dùng công nghệ DTG tốt nhất?">🖨️ DTG tốt nhất</button>
-                <button class="quick-btn" data-prompt="Kiểm tra tồn kho sản phẩm">📦 Kiểm tra tồn kho</button>
-                <button class="quick-btn" data-prompt="Tìm áo màu đen, partner Spire, dưới $12, ship US">🔍 Lọc theo điều kiện</button>
-                <button class="quick-btn" data-prompt="Sản phẩm nào có lợi nhuận cao nhất?">💰 Lợi nhuận cao nhất</button>
-            </div>
-        </div>
-
-        <div class="sidebar-section">
-            <h3 class="sidebar-title">📊 Bộ lọc nhanh</h3>
-            <div class="filter-group">
-                <label class="filter-label">🌍 Location</label>
-                <div class="filter-tags">
-                    <span class="filter-tag active" data-filter="location" data-value="">Tất cả</span>
-                    <span class="filter-tag" data-filter="location" data-value="US">🇺🇸 US</span>
-                    <span class="filter-tag" data-filter="location" data-value="EU">🇪🇺 EU</span>
-                    <span class="filter-tag" data-filter="location" data-value="China">🇨🇳 China</span>
-                    <span class="filter-tag" data-filter="location" data-value="Vietnam">🇻🇳 VN</span>
-                </div>
-            </div>
-            <div class="filter-group">
-                <label class="filter-label">🖨️ Print Method</label>
-                <div class="filter-tags">
-                    <span class="filter-tag active" data-filter="print" data-value="">Tất cả</span>
-                    <span class="filter-tag" data-filter="print" data-value="DTG">DTG</span>
-                    <span class="filter-tag" data-filter="print" data-value="Sublimation">Sub</span>
-                    <span class="filter-tag" data-filter="print" data-value="AOP">AOP</span>
-                    <span class="filter-tag" data-filter="print" data-value="Embroidery">Thêu</span>
-                </div>
-            </div>
-            <div class="filter-group">
-                <label class="filter-label">⏱️ Lead Time</label>
-                <div class="filter-tags">
-                    <span class="filter-tag active" data-filter="lead" data-value="">Tất cả</span>
-                    <span class="filter-tag" data-filter="lead" data-value="5">⚡ 1-5 ngày</span>
-                    <span class="filter-tag" data-filter="lead" data-value="10">🔵 ≤10 ngày</span>
-                </div>
-            </div>
-            <div class="filter-group">
-                <label class="filter-label">💵 Khoảng giá</label>
-                <div class="filter-tags">
-                    <span class="filter-tag active" data-filter="price" data-value="">Tất cả</span>
-                    <span class="filter-tag" data-filter="price" data-value="under10">Dưới $10</span>
-                    <span class="filter-tag" data-filter="price" data-value="under15">Dưới $15</span>
-                    <span class="filter-tag" data-filter="price" data-value="over15">Trên $15</span>
-                </div>
-            </div>
-            <button class="btn-apply-filter" id="btn-apply-filter">🔍 Áp dụng bộ lọc</button>
-        </div>
-
-        <div class="sidebar-section">
-            <h3 class="sidebar-title">💬 Phiên hiện tại</h3>
-            <div class="session-info">
-                <span class="session-id" id="session-display">{{ session_id|truncatechars:12 }}...</span>
-                <button class="btn-new-chat" id="btn-new-chat" title="Tạo phiên mới">🔄 Mới</button>
-            </div>
-        </div>
-
-        <div class="sidebar-section">
-            <h3 class="sidebar-title">🗄️ Cache</h3>
-            <div class="cache-info" id="cache-info">
-                <span class="cache-label">Catalog cache</span>
-                <button class="btn-clear-cache" id="btn-clear-cache" title="Làm mới catalog từ API">🔄 Refresh</button>
-            </div>
-        </div>
-    </aside>
-
-    <!-- Chat area -->
-    <section class="chat-section">
-        <!-- Messages container -->
-        <div class="messages-container" id="messages-container">
-            <!-- Welcome message -->
-            <div class="message-group assistant-group" id="welcome-msg">
-                <div class="avatar">🍔</div>
-                <div class="message-content">
-                    <div class="message-bubble assistant-bubble">
-                        <p><strong>BurgerPrintsAgent</strong> sẵn sàng hỗ trợ bạn như một trợ lý chat thực thụ.</p>
-                        <p>Bạn cứ nói chuyện tự nhiên, tôi sẽ tự hiểu context và đi tiếp từng bước.</p>
-                        <p>Tôi làm tốt nhất với:</p>
-                        <ul>
-                            <li><strong>Tìm sản phẩm</strong> theo market, partner, màu sắc, budget</li>
-                            <li><strong>So sánh sản phẩm</strong> theo giá, màu, location, print tech</li>
-                            <li><strong>Kiểm tra tồn kho</strong> và gợi ý phương án thay thế</li>
-                            <li><strong>Tư vấn POD</strong> theo mindset seller, không phải trả lời máy móc</li>
-                        </ul>
-                        <p>Thử một câu như: <code>Tìm áo màu đen, partner Spire, dưới $12, ship US</code></p>
+<main class="h-screen overflow-hidden">
+    <div id="bp-shell" class="h-full flex flex-col lg:flex-row gap-4 p-4 transition-all">
+        <!-- =====================================================
+             LEFT PANEL — AI CHAT
+             - Landing: 100% width
+             - Active: 40% width
+        ====================================================== -->
+        <section id="bp-chat-panel" class="h-full rounded-2xl bg-white shadow-soft border border-black/5 overflow-hidden flex flex-col transition-all duration-500 ease-out lg:basis-full" aria-label="AI chat panel">
+            <header class="px-5 py-4 border-b border-black/5 bg-white">
+                <div class="flex items-center justify-between gap-4">
+                    <div class="flex items-center gap-3 min-w-0">
+                        <div class="h-10 w-10 rounded-xl bg-appBg border border-black/10 overflow-hidden flex items-center justify-center">
+                            <img src="logo BP.png" alt="BurgerPrintsAgent logo" class="h-full w-full object-cover" onerror="this.style.display='none'; this.parentElement.querySelector('.logo-fallback').style.display='flex';" />
+                            <div class="logo-fallback hidden items-center justify-center h-full w-full text-xs font-semibold text-ink/70">BP</div>
+                        </div>
+                        <div class="min-w-0">
+                            <div class="text-lg sm:text-xl font-extrabold tracking-tight leading-tight truncate">
+                                <span class="text-brandBlue">BURGER</span><span class="text-brandOrange">PRINTS</span><span class="text-ink">Agent</span>
+                            </div>
+                            <div class="text-xs text-ink/60 mt-0.5">
+                                AI Agent giúp seller POD tìm, so sánh, tối ưu fulfillment.
+                            </div>
+                        </div>
                     </div>
-                    <span class="message-time">Vừa xong</span>
+
+                    <div class="flex items-center gap-2">
+                        <a href="{% url 'graph' %}" class="hidden sm:inline-flex items-center gap-2 px-3 py-2 rounded-xl bg-white border border-black/10 text-xs font-semibold hover:bg-appBg transition" title="Graph Visualization">
+                            <i class="fa-solid fa-diagram-project text-ink/60"></i> Graph
+                        </a>
+
+                        <button id="btn-clear-cache" type="button" class="hidden sm:inline-flex items-center gap-2 px-3 py-2 rounded-xl bg-white border border-black/10 text-xs font-semibold hover:bg-appBg transition" title="Làm mới catalog từ API">
+                            <i class="fa-solid fa-arrows-rotate text-ink/60"></i> Refresh
+                        </button>
+
+                        <button id="btn-new-chat" type="button" class="hidden sm:inline-flex items-center gap-2 px-3 py-2 rounded-xl bg-white border border-black/10 text-xs font-semibold hover:bg-appBg transition" title="Tạo phiên mới">
+                            <i class="fa-solid fa-plus text-ink/60"></i> New
+                        </button>
+
+                        <button id="bp-min-chat-btn" type="button" class="hidden lg:inline-flex items-center justify-center h-10 w-10 rounded-xl bg-white border border-black/10 text-ink/70 hover:bg-appBg transition" title="Minimize chat">
+                            <i class="fa-solid fa-window-minimize"></i>
+                        </button>
+
+                        <span class="inline-flex items-center gap-2 px-3 py-2 rounded-full bg-appBg text-ink/70 text-xs font-semibold border border-black/5">
+                            <span class="h-2 w-2 rounded-full bg-emerald-500" id="status-indicator"></span>
+                            <span id="status-label">Đang kết nối...</span>
+                        </span>
+                    </div>
+                </div>
+            </header>
+
+            <div id="bp-chat-scroll" class="flex-1 overflow-y-auto nice-scrollbar px-5 py-5 bg-gradient-to-b from-white to-appBg/60">
+                <!-- =================================================
+                     STATE 1 — Empty Chat / Landing Experience
+                ================================================== -->
+                <section id="bp-landing" class="min-h-[calc(100vh-220px)] flex items-center justify-center" aria-label="Landing experience">
+                    <div class="w-full max-w-3xl text-center">
+                        <div class="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-white border border-black/10 text-xs font-semibold text-ink/70 shadow-sm">
+                            <i class="fa-solid fa-wand-magic-sparkles text-brandOrange"></i>
+                            Premium AI SaaS Workflow
+                        </div>
+
+                        <h1 class="mt-5 text-3xl sm:text-4xl lg:text-5xl font-extrabold tracking-tight leading-tight">
+                            Find the Perfect SKU. <span class="text-brandBlue">Faster.</span>
+                        </h1>
+                        <p class="mt-4 text-base sm:text-lg text-ink/65">
+                            Ask BurgerPrintsAgent to compare factories, optimize fulfillment, and discover the best product options.
+                        </p>
+
+                        <div class="mt-8 grid grid-cols-1 sm:grid-cols-2 gap-3 text-left">
+                            <button class="quick-btn group rounded-2xl bg-white border border-black/10 shadow-sm hover:shadow-soft transition p-4" data-prompt="Find US-based Hoodie factories with under 3-day production time.">
+                                <div class="flex items-start gap-3">
+                                    <div class="h-10 w-10 rounded-xl bg-brandBlue/10 text-brandBlue flex items-center justify-center border border-brandBlue/15 shrink-0">
+                                        <i class="fa-solid fa-magnifying-glass"></i>
+                                    </div>
+                                    <div>
+                                        <div class="text-sm font-bold group-hover:text-brandBlue transition">
+                                            Find US-based Hoodie factories with under 3-day production time.
+                                        </div>
+                                        <div class="mt-1 text-xs text-ink/55">Filters: US • Hoodie • ≤ 3 days</div>
+                                    </div>
+                                </div>
+                            </button>
+
+                            <button class="quick-btn group rounded-2xl bg-white border border-black/10 shadow-sm hover:shadow-soft transition p-4" data-prompt="Compare T-shirt base costs and shipping rates between top factories.">
+                                <div class="flex items-start gap-3">
+                                    <div class="h-10 w-10 rounded-xl bg-brandOrange/10 text-brandOrange flex items-center justify-center border border-brandOrange/15 shrink-0">
+                                        <i class="fa-solid fa-chart-column"></i>
+                                    </div>
+                                    <div>
+                                        <div class="text-sm font-bold group-hover:text-brandBlue transition">
+                                            Compare T-shirt base costs and shipping rates between top factories.
+                                        </div>
+                                        <div class="mt-1 text-xs text-ink/55">Compare: base cost • shipping</div>
+                                    </div>
+                                </div>
+                            </button>
+
+                            <button class="quick-btn group rounded-2xl bg-white border border-black/10 shadow-sm hover:shadow-soft transition p-4" data-prompt="Optimize EU fulfillment routes to reduce delivery delays.">
+                                <div class="flex items-start gap-3">
+                                    <div class="h-10 w-10 rounded-xl bg-brandBlue/10 text-brandBlue flex items-center justify-center border border-brandBlue/15 shrink-0">
+                                        <i class="fa-solid fa-bolt"></i>
+                                    </div>
+                                    <div>
+                                        <div class="text-sm font-bold group-hover:text-brandBlue transition">
+                                            Optimize EU fulfillment routes to reduce delivery delays.
+                                        </div>
+                                        <div class="mt-1 text-xs text-ink/55">Optimize: EU routes • lead time</div>
+                                    </div>
+                                </div>
+                            </button>
+
+                            <button class="quick-btn group rounded-2xl bg-white border border-black/10 shadow-sm hover:shadow-soft transition p-4" data-prompt="Find the most profitable T-shirt under $8 base cost.">
+                                <div class="flex items-start gap-3">
+                                    <div class="h-10 w-10 rounded-xl bg-brandOrange/10 text-brandOrange flex items-center justify-center border border-brandOrange/15 shrink-0">
+                                        <i class="fa-solid fa-dollar-sign"></i>
+                                    </div>
+                                    <div>
+                                        <div class="text-sm font-bold group-hover:text-brandBlue transition">
+                                            Find the most profitable T-shirt under $8 base cost.
+                                        </div>
+                                        <div class="mt-1 text-xs text-ink/55">Constraint: base cost &lt; $8</div>
+                                    </div>
+                                </div>
+                            </button>
+
+                            <button class="quick-btn group rounded-2xl bg-white border border-black/10 shadow-sm hover:shadow-soft transition p-4" data-prompt="Compare shipping speed between US and EU factories.">
+                                <div class="flex items-start gap-3">
+                                    <div class="h-10 w-10 rounded-xl bg-brandBlue/10 text-brandBlue flex items-center justify-center border border-brandBlue/15 shrink-0">
+                                        <i class="fa-solid fa-truck-fast"></i>
+                                    </div>
+                                    <div>
+                                        <div class="text-sm font-bold group-hover:text-brandBlue transition">
+                                            Compare shipping speed between US and EU factories.
+                                        </div>
+                                        <div class="mt-1 text-xs text-ink/55">Compare: US vs EU</div>
+                                    </div>
+                                </div>
+                            </button>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- Chat messages -->
+                <div id="messages-container" class="hidden space-y-4" aria-label="Chat messages"></div>
+
+                <!-- Product cards area (optional) -->
+                <div id="product-cards-area" class="hidden mt-6">
+                    <div class="flex items-center justify-between gap-3">
+                        <div class="min-w-0">
+                            <div class="text-sm font-bold" id="product-cards-title">Sản phẩm đề xuất</div>
+                            <div class="text-xs text-ink/60 mt-0.5" id="product-count"></div>
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <button class="px-3 py-2 rounded-xl bg-white border border-black/10 text-xs font-semibold hover:bg-appBg transition" id="toggle-products-btn" type="button">
+                                Ẩn gợi ý
+                            </button>
+                            <button class="px-3 py-2 rounded-xl bg-white border border-black/10 text-xs font-semibold hover:bg-appBg transition" id="toggle-partner-colors-btn" type="button">
+                                Ẩn màu theo partner
+                            </button>
+                        </div>
+                    </div>
+                    <div id="product-cards-grid" class="mt-3 grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3"></div>
                 </div>
             </div>
+
+            <div class="border-t border-black/5 bg-white" id="bp-input-area">
+                <div class="p-4">
+                    <div class="flex flex-col gap-3">
+                        <div class="flex flex-wrap gap-2" id="composer-suggestions">
+                            <button class="composer-chip px-3 py-2 rounded-xl bg-appBg border border-black/10 text-xs font-semibold hover:bg-white transition" data-prompt="Gợi ý 3 sản phẩm POD dễ bán tốt nhất">Gợi ý sản phẩm</button>
+                            <button class="composer-chip px-3 py-2 rounded-xl bg-appBg border border-black/10 text-xs font-semibold hover:bg-white transition" data-prompt="So sánh Bella + Canvas 3001 với Gildan 5000">So sánh 2 sản phẩm</button>
+                            <button class="composer-chip px-3 py-2 rounded-xl bg-appBg border border-black/10 text-xs font-semibold hover:bg-white transition" data-prompt="Tìm sản phẩm màu đen, partner Spire, dưới $12, ship US">Lọc theo partner & giá</button>
+                        </div>
+
+                        <div class="flex items-end gap-2">
+                            <button type="button" class="h-11 w-11 rounded-xl border border-black/10 bg-white hover:bg-appBg transition flex items-center justify-center text-ink/70" title="Upload">
+                                <i class="fa-solid fa-paperclip"></i>
+                            </button>
+                            <button type="button" class="h-11 w-11 rounded-xl border border-black/10 bg-white hover:bg-appBg transition flex items-center justify-center text-ink/70" title="Voice">
+                                <i class="fa-solid fa-microphone"></i>
+                            </button>
+
+                            <div class="flex-1">
+                                <div class="relative">
+                                    <textarea id="chat-input" class="w-full min-h-[44px] max-h-40 rounded-xl border border-black/10 bg-appBg/40 px-4 py-3 pr-14 text-sm outline-none focus:ring-4 focus:ring-brandBlue/15 focus:border-brandBlue/40 resize-none" placeholder="Nhắn tin tự nhiên như đang chat..." rows="1" maxlength="500"></textarea>
+                                    <div class="absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-2">
+                                        <span class="text-ink/35 text-[11px] font-semibold" id="char-count">0/500</span>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <button class="h-11 px-4 rounded-xl bg-brandBlue text-white font-semibold text-sm shadow-sm hover:brightness-110 active:brightness-95 transition disabled:opacity-50 disabled:cursor-not-allowed" id="send-btn" type="button" title="Gửi (Enter)">
+                                <i class="fa-solid fa-paper-plane mr-2"></i> Send
+                            </button>
+                        </div>
+
+                        <div class="text-[11px] text-ink/50">Enter để gửi · Shift+Enter xuống dòng · lịch sử giữ theo session</div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <div id="bp-resizer" class="hidden lg:flex h-full w-2 items-center justify-center cursor-col-resize select-none">
+            <div class="h-20 w-1 rounded-full bg-black/10"></div>
         </div>
 
-        <!-- Product cards area -->
-        <div class="product-cards-area" id="product-cards-area" style="display:none;">
-            <div class="product-cards-header">
-                <div class="product-cards-header-left">
-                    <span class="product-cards-title" id="product-cards-title">Sản phẩm đề xuất</span>
-                    <span class="product-count" id="product-count"></span>
+        <!-- =====================================================
+             RIGHT PANEL — DECISION CANVAS (Factory Comparison)
+             - Landing: hidden
+             - Active: 60% width
+        ====================================================== -->
+        <section id="bp-canvas-panel" class="hidden h-full rounded-2xl bg-white shadow-soft border border-black/5 overflow-hidden flex-col transition-all duration-500 ease-out lg:basis-3/5" aria-label="Decision canvas panel">
+            <header class="px-5 pt-5 pb-4 border-b border-black/5 bg-white">
+                <div class="flex items-start justify-between gap-3">
+                    <div>
+                        <h2 class="text-lg sm:text-xl font-extrabold tracking-tight">Factory Comparison</h2>
+                        <p class="text-sm text-ink/60 mt-1">So sánh theo partner/factory, dựa trên dữ liệu truy xuất mới nhất.</p>
+                    </div>
+                    <div class="hidden sm:flex items-center gap-2">
+                        <span class="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-appBg text-ink/70 text-xs font-semibold border border-black/5">
+                            <i class="fa-solid fa-shield-halved text-brandOrange"></i> Data-backed picks
+                        </span>
+                        <button id="bp-min-canvas-btn" type="button" class="hidden lg:inline-flex items-center justify-center h-10 w-10 rounded-xl bg-white border border-black/10 text-ink/70 hover:bg-appBg transition" title="Minimize canvas">
+                            <i class="fa-solid fa-window-minimize"></i>
+                        </button>
+                    </div>
                 </div>
-                <div class="product-cards-header-actions">
-                    <button class="header-toggle" id="toggle-products-btn" type="button">Ẩn gợi ý</button>
-                    <button class="header-toggle" id="toggle-partner-colors-btn" type="button">Ẩn màu theo partner</button>
-                </div>
-            </div>
-            <div class="product-cards-grid" id="product-cards-grid"></div>
-        </div>
+            </header>
 
-        <!-- Chat input -->
-        <div class="chat-input-area">
-            <div class="composer-suggestions" id="composer-suggestions">
-                <button class="composer-chip" data-prompt="Tìm 3 sản phẩm POD dễ cho seller mới scale nhất">Seller mới nên bán gì</button>
-                <button class="composer-chip" data-prompt="So sánh Comfort Colors 1566 với Bella + Canvas 3945">So sánh 2 sản phẩm</button>
-                <button class="composer-chip" data-prompt="Tìm sản phẩm màu đen, partner Spire, dưới $12">Lọc theo partner và giá</button>
-            </div>
-            <div class="input-wrapper">
-                <textarea
-                    id="chat-input"
-                    class="chat-input"
-                    placeholder="Nhắn tin tự nhiên như đang chat với ChatGPT..."
-                    rows="1"
-                    maxlength="500"
-                ></textarea>
-                <div class="input-actions">
-                    <span class="char-count" id="char-count">0/500</span>
-                    <button class="send-btn" id="send-btn" title="Gửi (Enter)">
-                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
-                            <path d="M22 2L11 13M22 2L15 22 11 13 2 9l20-7z"/>
-                        </svg>
-                    </button>
+            <div class="flex-1 overflow-y-auto nice-scrollbar bg-gradient-to-b from-white to-appBg/60 p-5" id="bp-canvas-content">
+                <div class="grid grid-cols-1 xl:grid-cols-3 gap-4">
+                    <div class="xl:col-span-1 rounded-2xl bg-white border border-black/5 shadow-sm p-4">
+                        <div class="flex items-start justify-between gap-3">
+                            <div>
+                                <div class="text-sm font-bold">Best Overall Choice</div>
+                                <div class="text-sm text-ink/60 mt-1" id="bp-winner-subtitle">Gửi một câu hỏi để hiển thị kết quả.</div>
+                            </div>
+                            <div class="h-10 w-10 rounded-xl bg-brandOrange text-white flex items-center justify-center shadow-sm">
+                                <i class="fa-solid fa-trophy"></i>
+                            </div>
+                        </div>
+                        <div class="mt-4 grid grid-cols-3 gap-2">
+                            <div class="rounded-xl bg-appBg/60 border border-black/5 p-3">
+                                <div class="text-[11px] text-ink/60">Base</div>
+                                <div class="text-sm font-extrabold" id="bp-winner-base">—</div>
+                            </div>
+                            <div class="rounded-xl bg-appBg/60 border border-black/5 p-3">
+                                <div class="text-[11px] text-ink/60">Production</div>
+                                <div class="text-sm font-extrabold" id="bp-winner-prod">—</div>
+                            </div>
+                            <div class="rounded-xl bg-appBg/60 border border-black/5 p-3">
+                                <div class="text-[11px] text-ink/60">Quality</div>
+                                <div class="text-sm font-extrabold" id="bp-winner-quality">—</div>
+                            </div>
+                        </div>
+                        <button id="bp-export-btn" type="button" class="mt-4 w-full h-11 rounded-xl bg-brandBlue text-white font-semibold hover:brightness-110 transition disabled:opacity-50 disabled:cursor-not-allowed" disabled>
+                            <i class="fa-solid fa-file-circle-check mr-2"></i> Export comparison snapshot
+                        </button>
+                    </div>
+
+                    <div class="xl:col-span-2 rounded-2xl bg-white border border-black/5 shadow-sm p-4 overflow-hidden">
+                        <div class="flex items-center justify-between gap-3">
+                            <div>
+                                <div class="text-sm font-bold">Comparison Table</div>
+                                <div class="text-sm text-ink/60 mt-1">Factory-level view (derived from product partners).</div>
+                            </div>
+                            <div class="flex items-center gap-2 text-xs text-ink/60">
+                                <span class="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-appBg border border-black/5">
+                                    <span class="h-2 w-2 rounded-full bg-brandOrange"></span> Winner
+                                </span>
+                            </div>
+                        </div>
+
+                        <div class="mt-4 overflow-x-auto">
+                            <table class="w-full text-left border-separate border-spacing-0">
+                                <thead>
+                                    <tr class="text-xs text-ink/60">
+                                        <th class="py-3 px-3 font-semibold border-b border-black/10">Factory</th>
+                                        <th class="py-3 px-3 font-semibold border-b border-black/10">Base Cost</th>
+                                        <th class="py-3 px-3 font-semibold border-b border-black/10">Production Time</th>
+                                        <th class="py-3 px-3 font-semibold border-b border-black/10">Shipping Time</th>
+                                        <th class="py-3 px-3 font-semibold border-b border-black/10">Quality Score</th>
+                                        <th class="py-3 px-3 font-semibold border-b border-black/10">Capacity</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="bp-factory-table-body" class="text-sm"></tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="mt-4 grid grid-cols-1 xl:grid-cols-3 gap-4">
+                    <section class="xl:col-span-1 rounded-2xl bg-white border border-black/5 shadow-sm p-4">
+                        <div class="flex items-center justify-between gap-3">
+                            <div>
+                                <div class="text-sm font-bold">Insights</div>
+                                <div class="text-sm text-ink/60 mt-1">Key takeaways from the latest run.</div>
+                            </div>
+                            <div class="h-10 w-10 rounded-xl bg-appBg border border-black/10 flex items-center justify-center text-ink/70">
+                                <i class="fa-solid fa-lightbulb"></i>
+                            </div>
+                        </div>
+                        <ul id="bp-insights-list" class="mt-4 space-y-2 text-sm text-ink/75"></ul>
+                    </section>
+
+                    <section class="xl:col-span-2 rounded-2xl bg-white border border-black/5 shadow-sm p-4">
+                        <div class="flex items-center justify-between gap-3">
+                            <div>
+                                <div class="text-sm font-bold">Top Recommendations</div>
+                                <div class="text-sm text-ink/60 mt-1">Top 3 factory options with score breakdown.</div>
+                            </div>
+                            <span class="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-brandOrange/10 text-brandOrange text-xs font-semibold border border-brandOrange/20">
+                                <i class="fa-solid fa-award"></i> Ranked
+                            </span>
+                        </div>
+                        <div id="bp-ranking-cards" class="mt-4 grid grid-cols-1 sm:grid-cols-3 gap-3"></div>
+                    </section>
                 </div>
             </div>
-            <p class="input-hint">Enter để gửi · Shift+Enter xuống dòng · lịch sử sẽ được giữ theo session</p>
-        </div>
-    </section>
 
+            <footer class="px-5 py-3 border-t border-black/5 bg-white" id="bp-canvas-footer">
+                <div class="flex flex-col sm:flex-row sm:items-center gap-2 justify-between">
+                    <div class="text-xs text-ink/60">
+                        <span class="font-semibold">BurgerPrintsAgent</span> • AI Chat + Factory Decision Canvas
+                    </div>
+                    <div class="flex items-center gap-2 text-xs">
+                        <span class="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-appBg border border-black/5 text-ink/70">
+                            <i class="fa-solid fa-lock text-brandOrange"></i> Secure by design
+                        </span>
+                    </div>
+                </div>
+            </footer>
+        </section>
+    </div>
 </main>
 
 <!-- Loading overlay -->

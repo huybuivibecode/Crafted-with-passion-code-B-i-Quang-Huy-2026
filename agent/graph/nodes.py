@@ -403,7 +403,25 @@ def market_analysis_node(state: AgentState) -> AgentState:
 def inventory_analysis_node(state: AgentState) -> AgentState:
     """Verify inventory status from BurgerPrints out-of-stock ground truth."""
     products = state.get("products_norm", [])
-    oos_ids = state.get("out_of_stock_ids", [])
+    oos_ids = state.get("out_of_stock_ids", None)
+    snapshot = state.get("inventory_snapshot", {}) or {}
+    if snapshot.get("source") == "error":
+        oos_ids = None
+
+    if oos_ids is None:
+        products_norm = annotate_inventory(products, None)
+        inventory_snapshot = {
+            "out_of_stock_ids": [],
+            "source": "unknown",
+            "count": 0,
+        }
+        return {
+            **state,
+            "products_norm": products_norm,
+            "candidates": products_norm,
+            "out_of_stock_ids": [],
+            "inventory_snapshot": inventory_snapshot,
+        }
 
     if not oos_ids:
         try:
@@ -411,7 +429,19 @@ def inventory_analysis_node(state: AgentState) -> AgentState:
             oos_ids = extract_out_of_stock_ids(data)
         except Exception as e:
             logger.warning(f"inventory_analysis_node stock check failed: {e}")
-            oos_ids = []
+            products_norm = annotate_inventory(products, None)
+            inventory_snapshot = {
+                "out_of_stock_ids": [],
+                "source": "error",
+                "count": 0,
+            }
+            return {
+                **state,
+                "products_norm": products_norm,
+                "candidates": products_norm,
+                "out_of_stock_ids": [],
+                "inventory_snapshot": inventory_snapshot,
+            }
 
     products_norm = annotate_inventory(products, oos_ids)
     candidates = [p for p in products_norm if p.get("inventory_status") != "out_of_stock"]
@@ -515,7 +545,7 @@ def decision_engine_node(state: AgentState) -> AgentState:
     """
     products_norm = state.get("candidates") or state.get("products_norm", [])
     criteria = state.get("extracted_criteria", {})
-    oos_ids = state.get("out_of_stock_ids", [])
+    oos_ids = state.get("out_of_stock_ids") or []
     catalog_index = state.get("catalog_index", {}) or {}
     market_context = state.get("market_context", {}) or infer_market(criteria, state.get("query", ""))
     season_context = state.get("season_context", {}) or infer_season(market_context)
@@ -524,7 +554,7 @@ def decision_engine_node(state: AgentState) -> AgentState:
     pricing_context = state.get("pricing_context", {})
     persona_context = state.get("persona_context", {})
     compatibility_context = state.get("compatibility_context", {})
-    oos_set = {canonicalize_short_code(x) for x in oos_ids}
+    oos_set = {canonicalize_short_code(x) for x in oos_ids or []}
 
     candidates = []
     for p in products_norm:
@@ -1221,7 +1251,7 @@ def _build_deterministic_response(
         medals = ["🥇", "🥈", "🥉"]
         medal = medals[rank - 1]
         product_lines.append(f"{medal} **{p.get('name', 'N/A')}** (`{p.get('short_code', 'N/A')}`) — **{score:.0f}/100**")
-        product_lines.append(f"   - � {p.get('location', '?')} · ⏱️ {p.get('processing_time', '?')} · 🖨️ {p.get('print_method', '?')}")
+        product_lines.append(f"   - 📍 {p.get('location', '?')} · ⏱️ {p.get('processing_time', '?')} · 🖨️ {p.get('print_method', '?')}")
         product_lines.append(f"   - 💰 Giá gợi ý: **${p.get('suggested_selling_price', 0):.2f}** · Lợi nhuận/đơn: **${p.get('profit', 0):.2f}** · ROI: **{p.get('roi', 0):.0f}%**")
         product_lines.append(f"   - 🎯 Hợp với: **{p.get('recommended_audience', 'General Gift Buyers')}**")
         risks = p.get("risks") or []
@@ -1238,7 +1268,79 @@ def _build_deterministic_response(
     if reasons:
         reason_section = "\n\n**✅ Lý do đề xuất sản phẩm #1:**\n" + "\n".join(f"- {r}" for r in reasons)
 
+    top_product = scores[0]["product"] if scores else {}
+    partner_prices = top_product.get("partner_prices") if isinstance(top_product, dict) else {}
+    partner_price_max = top_product.get("partner_price_max") if isinstance(top_product, dict) else {}
+    partner_best_variant = top_product.get("partner_best_variant") if isinstance(top_product, dict) else {}
+
+    max_price_constraint = _as_float(criteria.get("max_price", 9999.0), 9999.0)
+    has_price_constraint = 0 < max_price_constraint < 9999.0
+
+    best_partner = ""
+    best_partner_price = None
+    if isinstance(partner_prices, dict) and partner_prices:
+        pairs = []
+        for partner_name, partner_price in partner_prices.items():
+            name = str(partner_name or "").strip()
+            val = _as_float(partner_price, 0.0)
+            if not name or val <= 0:
+                continue
+            pairs.append((name, val))
+        pairs.sort(key=lambda x: x[1])
+        if pairs:
+            eligible = [x for x in pairs if (not has_price_constraint) or (x[1] <= max_price_constraint)]
+            chosen = eligible[0] if eligible else pairs[0]
+            best_partner, best_partner_price = chosen
+
+    factory_section = ""
+    if best_partner:
+        sku_code = top_product.get("short_code", "N/A")
+        partner_max = None
+        if isinstance(partner_price_max, dict):
+            partner_max_val = _as_float(partner_price_max.get(best_partner), 0.0)
+            if partner_max_val > 0:
+                partner_max = partner_max_val
+
+        variant = None
+        if isinstance(partner_best_variant, dict):
+            v = partner_best_variant.get(best_partner)
+            if isinstance(v, dict) and v:
+                variant = v
+
+        price_note = f"${best_partner_price:.2f}" if best_partner_price is not None else "—"
+        range_note = ""
+        if partner_max is not None and best_partner_price is not None and partner_max > (best_partner_price + 0.0001):
+            range_note = f"${best_partner_price:.2f}–${partner_max:.2f}"
+
+        lines = ["\n\n**🏭 Gợi ý xưởng & SKU (chốt nhanh):**", f"- Xưởng: **{best_partner}**"]
+
+        if variant and best_partner_price is not None:
+            variant_sku = (variant.get("sku") or "").strip()
+            size = (variant.get("size") or "").strip()
+            color = (variant.get("color") or "").strip()
+            bits = []
+            if size:
+                bits.append(f"size **{size}**")
+            if color:
+                bits.append(f"màu **{color}**")
+            variant_desc = ", ".join(bits) if bits else "biến thể rẻ nhất"
+            lines.append(f"- Base cost (min): **{price_note}** ({variant_desc})")
+            if range_note:
+                lines.append(f"- Range theo xưởng: **{range_note}**")
+            if variant_sku:
+                lines.append(f"- Variant SKU: `{variant_sku}`")
+        else:
+            lines.append(f"- Base cost (min): **{price_note}**")
+            if range_note:
+                lines.append(f"- Range theo xưởng: **{range_note}**")
+
+        lines.append(f"- Product SKU: `{sku_code}`")
+        if range_note:
+            lines.append("- Lưu ý: giá có thể tăng theo size/color (nên bạn có thể thấy mức cao hơn như $9.50 ở size lớn).")
+
+        factory_section = "\n".join(lines)
+
     # CTA
     cta = "\n\n💬 Bạn muốn mình chốt **5 mẫu best-seller** theo hướng **giá rẻ dễ scale** hay **premium bán giá cao**?"
 
-    return header + "\n".join(product_lines) + more_section + reason_section + cta
+    return header + "\n".join(product_lines) + more_section + reason_section + factory_section + cta

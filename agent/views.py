@@ -116,6 +116,7 @@ class ChatAPIView(APIView):
 
         return Response({
             "session_id": session_id,
+            "query": query,
             "response": response_msg,
             "intent": intent,
             "list_all": list_all,

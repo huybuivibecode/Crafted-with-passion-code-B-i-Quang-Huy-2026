@@ -72,21 +72,37 @@
   </head>
 
   <body class="font-sans bg-appBg text-ink">
-    <!-- Full-height split screen container -->
+    <!--
+      BurgerPrintsAgent
+      - Single-page, responsive, production-ready UI in one HTML file.
+      - Tailwind (CDN), FontAwesome, and Montserrat are loaded in <head>.
+      - Two dynamic states:
+        (1) Landing / Empty chat
+        (2) Active search (40:60 split with Decision Canvas)
+    -->
+
+    <!-- Optional markdown rendering (for API responses that include tables/lists). -->
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/dompurify@3.0.8/dist/purify.min.js"></script>
+
     <main class="h-screen overflow-hidden">
-      <!-- Responsive behavior:
+      <!--
+        Responsive behavior:
         - Mobile: stack panels vertically
-        - Large: side-by-side 40:60 split
+        - Desktop (lg+): either full-width chat (Landing) or 40:60 split (Active)
       -->
-      <div class="h-full flex flex-col lg:flex-row gap-4 p-4">
-        <!-- =========================
-             LEFT PANEL — AI CHAT (40%)
-        ========================== -->
+      <div id="shell" class="h-full flex flex-col lg:flex-row gap-4 p-4">
+        <!-- =====================================================
+             LEFT PANEL — AI CHAT
+             - Landing: 100% width, centered onboarding
+             - Active: 40% width, normal chat
+        ====================================================== -->
         <section
-          class="lg:basis-2/5 h-full rounded-2xl bg-white shadow-soft border border-black/5 overflow-hidden flex flex-col"
+          id="chatPanel"
+          class="h-full rounded-2xl bg-white shadow-soft border border-black/5 overflow-hidden flex flex-col transition-all duration-500 ease-out lg:basis-full"
           aria-label="AI chat panel"
         >
-          <!-- Header -->
+          <!-- Header (brand + status) -->
           <header class="px-5 py-4 border-b border-black/5 bg-white">
             <div class="flex items-center justify-between gap-4">
               <div class="flex items-center gap-3 min-w-0">
@@ -108,12 +124,11 @@
                     <span class="text-brandBlue">BURGER</span><span class="text-brandOrange">PRINTS</span><span class="text-ink">Agent</span>
                   </div>
                   <div class="text-xs text-ink/60 mt-0.5">
-                    AI agent for POD factory search, SKU optimization & confident sourcing.
+                    Search. Compare. Optimize fulfillment — with an AI-first workflow.
                   </div>
                 </div>
               </div>
 
-              <!-- Status / quick actions -->
               <div class="flex items-center gap-2">
                 <span class="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-appBg text-ink/70 text-xs font-semibold border border-black/5">
                   <span class="h-2 w-2 rounded-full bg-emerald-500"></span>
@@ -123,212 +138,137 @@
             </div>
           </header>
 
-          <!-- Chat history (scrollable) -->
-          <div class="flex-1 overflow-y-auto nice-scrollbar px-5 py-5 bg-gradient-to-b from-white to-appBg/60">
-            <!-- Conversation intro -->
-            <div class="flex items-start gap-3 mb-5">
-              <div class="h-9 w-9 rounded-xl bg-brandOrange/10 text-brandOrange flex items-center justify-center border border-brandOrange/20 shrink-0">
-                <i class="fa-solid fa-bolt"></i>
-              </div>
-              <div class="max-w-[32rem]">
-                <div class="text-sm font-semibold">BurgerPrintsAgent</div>
-                <div class="text-sm text-ink/70">
-                  Tell me your target product, market, and constraints. I’ll compare factories, recommend SKUs, and generate a push-ready configuration.
+          <!-- Scrollable area: Landing hero OR chat history -->
+          <div id="chatScroll" class="flex-1 overflow-y-auto nice-scrollbar px-5 py-5 bg-gradient-to-b from-white to-appBg/60">
+            <!-- =================================================
+                 STATE 1 — Empty Chat / Landing Experience
+            ================================================== -->
+            <section
+              id="landing"
+              class="min-h-[calc(100vh-220px)] flex items-center justify-center"
+              aria-label="Landing experience"
+            >
+              <div class="w-full max-w-3xl text-center">
+                <div class="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-white border border-black/10 text-xs font-semibold text-ink/70 shadow-sm">
+                  <i class="fa-solid fa-wand-magic-sparkles text-brandOrange"></i>
+                  Premium AI SaaS Workflow
                 </div>
-              </div>
-            </div>
 
-            <!-- User message (right aligned) -->
-            <div class="flex justify-end mb-4">
-              <div class="max-w-[85%] sm:max-w-[75%]">
-                <div class="flex justify-end">
-                  <div class="rounded-2xl rounded-tr-sm bg-brandBlue text-white px-4 py-3 shadow-sm">
-                    <div class="text-sm leading-relaxed">
-                      I’m launching a premium unisex hoodie. Need the best balance of <span class="font-semibold">cost</span>, <span class="font-semibold">fast US shipping</span>, and <span class="font-semibold">high print quality</span>.
-                    </div>
-                  </div>
-                </div>
-                <div class="mt-1 text-[11px] text-ink/50 text-right">You • 10:22</div>
-              </div>
-            </div>
+                <h1 class="mt-5 text-3xl sm:text-4xl lg:text-5xl font-extrabold tracking-tight leading-tight">
+                  Find the Perfect SKU. <span class="text-brandBlue">Faster.</span>
+                </h1>
+                <p class="mt-4 text-base sm:text-lg text-ink/65">
+                  Ask BurgerPrintsAgent to compare factories, optimize fulfillment, and discover the best product options.
+                </p>
 
-            <!-- AI message (left aligned) -->
-            <div class="flex justify-start mb-5">
-              <div class="max-w-[92%] sm:max-w-[82%]">
-                <div class="flex items-start gap-3">
-                  <div class="h-9 w-9 rounded-xl bg-white border border-black/10 shadow-sm flex items-center justify-center shrink-0">
-                    <i class="fa-solid fa-robot text-ink/70"></i>
-                  </div>
-                  <div class="rounded-2xl rounded-tl-sm bg-white border border-black/5 px-4 py-3 shadow-sm">
-                    <div class="text-sm leading-relaxed text-ink/80">
-                      Got it. I’ll shortlist factories optimized for <span class="font-semibold">US delivery speed</span> and <span class="font-semibold">DTG / DTF clarity</span>.
-                      Here are 3 strong candidates—pick one, or I can auto-select based on your priority weighting.
-                    </div>
-
-                    <!-- Inline factory cards inside AI message -->
-                    <div class="mt-4 grid grid-cols-1 sm:grid-cols-3 gap-3">
-                      <!-- Card 1 -->
-                      <div class="rounded-xl border border-black/10 bg-appBg/50 p-3 hover:shadow-sm transition">
-                        <div class="flex items-start justify-between gap-2">
-                          <div>
-                            <div class="text-xs font-bold tracking-tight">Northstar Prints</div>
-                            <div class="text-[11px] text-ink/60 mt-0.5">
-                              <i class="fa-solid fa-location-dot text-brandOrange mr-1"></i> Nevada, US
-                            </div>
-                          </div>
-                          <span class="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-brandOrange/10 text-brandOrange text-[11px] font-semibold border border-brandOrange/20">
-                            <i class="fa-solid fa-bolt"></i> Fastest
-                          </span>
-                        </div>
-                        <div class="mt-3 flex items-center justify-between text-[11px] text-ink/70">
-                          <span>Base cost</span><span class="font-semibold">$15.20</span>
-                        </div>
-                        <div class="mt-2 flex items-center justify-between text-[11px] text-ink/70">
-                          <span>Ships in</span><span class="font-semibold">2–4 days</span>
-                        </div>
-                        <div class="mt-2 flex items-center justify-between text-[11px] text-ink/70">
-                          <span>Quality</span>
-                          <span class="font-semibold">9.2 <span class="text-ink/40">/10</span></span>
-                        </div>
+                <!-- Suggested prompts (clickable cards) -->
+                <div class="mt-8 grid grid-cols-1 sm:grid-cols-2 gap-3 text-left">
+                  <button data-suggested class="group rounded-2xl bg-white border border-black/10 shadow-sm hover:shadow-soft transition p-4">
+                    <div class="flex items-start gap-3">
+                      <div class="h-10 w-10 rounded-xl bg-brandBlue/10 text-brandBlue flex items-center justify-center border border-brandBlue/15 shrink-0">
+                        <i class="fa-solid fa-magnifying-glass"></i>
                       </div>
-
-                      <!-- Card 2 -->
-                      <div class="rounded-xl border border-black/10 bg-white p-3 hover:shadow-sm transition">
-                        <div class="flex items-start justify-between gap-2">
-                          <div>
-                            <div class="text-xs font-bold tracking-tight">Atlas POD Works</div>
-                            <div class="text-[11px] text-ink/60 mt-0.5">
-                              <i class="fa-solid fa-location-dot text-brandOrange mr-1"></i> Texas, US
-                            </div>
-                          </div>
-                          <span class="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-brandOrange/10 text-brandOrange text-[11px] font-semibold border border-brandOrange/20">
-                            <i class="fa-solid fa-tag"></i> Best Value
-                          </span>
+                      <div>
+                        <div class="text-sm font-bold group-hover:text-brandBlue transition">
+                          Find US-based Hoodie factories with under 3-day production time.
                         </div>
-                        <div class="mt-3 flex items-center justify-between text-[11px] text-ink/70">
-                          <span>Base cost</span><span class="font-semibold">$14.10</span>
-                        </div>
-                        <div class="mt-2 flex items-center justify-between text-[11px] text-ink/70">
-                          <span>Ships in</span><span class="font-semibold">3–6 days</span>
-                        </div>
-                        <div class="mt-2 flex items-center justify-between text-[11px] text-ink/70">
-                          <span>Quality</span>
-                          <span class="font-semibold">8.8 <span class="text-ink/40">/10</span></span>
-                        </div>
-                      </div>
-
-                      <!-- Card 3 -->
-                      <div class="rounded-xl border border-black/10 bg-white p-3 hover:shadow-sm transition">
-                        <div class="flex items-start justify-between gap-2">
-                          <div>
-                            <div class="text-xs font-bold tracking-tight">Kyoto Ink Lab</div>
-                            <div class="text-[11px] text-ink/60 mt-0.5">
-                              <i class="fa-solid fa-location-dot text-brandOrange mr-1"></i> Osaka, JP
-                            </div>
-                          </div>
-                          <span class="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-brandOrange/10 text-brandOrange text-[11px] font-semibold border border-brandOrange/20">
-                            <i class="fa-solid fa-award"></i> Top Quality
-                          </span>
-                        </div>
-                        <div class="mt-3 flex items-center justify-between text-[11px] text-ink/70">
-                          <span>Base cost</span><span class="font-semibold">$16.40</span>
-                        </div>
-                        <div class="mt-2 flex items-center justify-between text-[11px] text-ink/70">
-                          <span>Ships in</span><span class="font-semibold">6–9 days</span>
-                        </div>
-                        <div class="mt-2 flex items-center justify-between text-[11px] text-ink/70">
-                          <span>Quality</span>
-                          <span class="font-semibold">9.6 <span class="text-ink/40">/10</span></span>
+                        <div class="mt-1 text-xs text-ink/55">
+                          Filters: US • Hoodie • ≤ 3 days
                         </div>
                       </div>
                     </div>
+                  </button>
 
-                    <!-- Quick actions -->
-                    <div class="mt-4 flex flex-wrap gap-2">
-                      <button class="px-3 py-2 rounded-xl bg-appBg border border-black/10 text-xs font-semibold hover:bg-white transition">
-                        <i class="fa-solid fa-sliders text-ink/60 mr-2"></i> Set priority weights
-                      </button>
-                      <button class="px-3 py-2 rounded-xl bg-white border border-black/10 text-xs font-semibold hover:bg-appBg transition">
-                        <i class="fa-solid fa-wand-magic-sparkles text-brandOrange mr-2"></i> Auto-pick best overall
-                      </button>
-                    </div>
-                  </div>
-                </div>
-                <div class="mt-1 text-[11px] text-ink/50">Agent • 10:23</div>
-              </div>
-            </div>
-
-            <!-- User message 2 -->
-            <div class="flex justify-end mb-4">
-              <div class="max-w-[85%] sm:max-w-[75%]">
-                <div class="rounded-2xl rounded-tr-sm bg-brandBlue text-white px-4 py-3 shadow-sm">
-                  <div class="text-sm leading-relaxed">
-                    Choose the best value, but don’t sacrifice print clarity. Also recommend an ideal factory SKU.
-                  </div>
-                </div>
-                <div class="mt-1 text-[11px] text-ink/50 text-right">You • 10:24</div>
-              </div>
-            </div>
-
-            <!-- AI message 2 -->
-            <div class="flex justify-start mb-10">
-              <div class="max-w-[92%] sm:max-w-[82%]">
-                <div class="flex items-start gap-3">
-                  <div class="h-9 w-9 rounded-xl bg-white border border-black/10 shadow-sm flex items-center justify-center shrink-0">
-                    <i class="fa-solid fa-robot text-ink/70"></i>
-                  </div>
-                  <div class="rounded-2xl rounded-tl-sm bg-white border border-black/5 px-4 py-3 shadow-sm">
-                    <div class="text-sm leading-relaxed text-ink/80">
-                      Recommendation: <span class="font-semibold">Atlas POD Works</span> (best value with reliably crisp prints).
-                      Next, I’ll configure a hoodie SKU optimized for premium feel + strong print surface:
-                    </div>
-                    <ul class="mt-3 space-y-2 text-sm text-ink/75">
-                      <li class="flex gap-2">
-                        <span class="mt-0.5 text-brandOrange"><i class="fa-solid fa-bolt"></i></span>
-                        <span><span class="font-semibold">Fabric:</span> 80/20 cotton blend, brushed fleece interior</span>
-                      </li>
-                      <li class="flex gap-2">
-                        <span class="mt-0.5 text-brandOrange"><i class="fa-solid fa-bolt"></i></span>
-                        <span><span class="font-semibold">Print Method:</span> DTF for vibrant colors + durability</span>
-                      </li>
-                      <li class="flex gap-2">
-                        <span class="mt-0.5 text-brandOrange"><i class="fa-solid fa-bolt"></i></span>
-                        <span><span class="font-semibold">Suggested SKU:</span> AT-HDY-450gsm (Premium Heavyweight)</span>
-                      </li>
-                    </ul>
-                    <div class="mt-4 rounded-xl bg-brandOrange/10 border border-brandOrange/20 p-3">
-                      <div class="flex items-start gap-3">
-                        <div class="h-9 w-9 rounded-lg bg-brandOrange text-white flex items-center justify-center shrink-0 shadow-sm">
-                          <i class="fa-solid fa-circle-check"></i>
+                  <button data-suggested class="group rounded-2xl bg-white border border-black/10 shadow-sm hover:shadow-soft transition p-4">
+                    <div class="flex items-start gap-3">
+                      <div class="h-10 w-10 rounded-xl bg-brandOrange/10 text-brandOrange flex items-center justify-center border border-brandOrange/15 shrink-0">
+                        <i class="fa-solid fa-chart-column"></i>
+                      </div>
+                      <div>
+                        <div class="text-sm font-bold group-hover:text-brandBlue transition">
+                          Compare T-shirt base costs and shipping rates between top factories.
                         </div>
-                        <div>
-                          <div class="text-sm font-bold">Next step</div>
-                          <div class="text-sm text-ink/70">
-                            Review the <span class="font-semibold">Factory Comparison</span> tab and tweak variants in <span class="font-semibold">SKU Configuration & Preview</span>.
-                          </div>
+                        <div class="mt-1 text-xs text-ink/55">
+                          Compare: base cost • shipping
                         </div>
                       </div>
                     </div>
-                  </div>
+                  </button>
+
+                  <button data-suggested class="group rounded-2xl bg-white border border-black/10 shadow-sm hover:shadow-soft transition p-4">
+                    <div class="flex items-start gap-3">
+                      <div class="h-10 w-10 rounded-xl bg-brandBlue/10 text-brandBlue flex items-center justify-center border border-brandBlue/15 shrink-0">
+                        <i class="fa-solid fa-bolt"></i>
+                      </div>
+                      <div>
+                        <div class="text-sm font-bold group-hover:text-brandBlue transition">
+                          Optimize EU fulfillment routes to reduce delivery delays.
+                        </div>
+                        <div class="mt-1 text-xs text-ink/55">
+                          Optimize: EU routes • lead time
+                        </div>
+                      </div>
+                    </div>
+                  </button>
+
+                  <button data-suggested class="group rounded-2xl bg-white border border-black/10 shadow-sm hover:shadow-soft transition p-4">
+                    <div class="flex items-start gap-3">
+                      <div class="h-10 w-10 rounded-xl bg-brandOrange/10 text-brandOrange flex items-center justify-center border border-brandOrange/15 shrink-0">
+                        <i class="fa-solid fa-dollar-sign"></i>
+                      </div>
+                      <div>
+                        <div class="text-sm font-bold group-hover:text-brandBlue transition">
+                          Find the most profitable T-shirt under $8 base cost.
+                        </div>
+                        <div class="mt-1 text-xs text-ink/55">
+                          Constraint: base cost &lt; $8
+                        </div>
+                      </div>
+                    </div>
+                  </button>
+
+                  <button data-suggested class="group rounded-2xl bg-white border border-black/10 shadow-sm hover:shadow-soft transition p-4">
+                    <div class="flex items-start gap-3">
+                      <div class="h-10 w-10 rounded-xl bg-brandBlue/10 text-brandBlue flex items-center justify-center border border-brandBlue/15 shrink-0">
+                        <i class="fa-solid fa-truck-fast"></i>
+                      </div>
+                      <div>
+                        <div class="text-sm font-bold group-hover:text-brandBlue transition">
+                          Compare shipping speed between US and EU factories.
+                        </div>
+                        <div class="mt-1 text-xs text-ink/55">
+                          Compare: US vs EU
+                        </div>
+                      </div>
+                    </div>
+                  </button>
                 </div>
-                <div class="mt-1 text-[11px] text-ink/50">Agent • 10:25</div>
               </div>
-            </div>
+            </section>
+
+            <!-- =================================================
+                 STATE 2 — Active Search (chat history)
+            ================================================== -->
+            <div id="messages" class="hidden space-y-4" aria-label="Chat messages"></div>
           </div>
 
-          <!-- Input area (sticky bottom) -->
+          <!-- Sticky input area -->
           <div class="border-t border-black/5 bg-white">
             <div class="p-4">
-              <div class="flex items-end gap-2">
-                <!-- Left utility buttons -->
+              <form id="chatForm" class="flex items-end gap-2">
+                <!-- Attachment button (UI) -->
                 <button
+                  type="button"
                   class="h-11 w-11 rounded-xl border border-black/10 bg-white hover:bg-appBg transition flex items-center justify-center text-ink/70"
                   aria-label="Upload attachment"
                   title="Upload"
                 >
                   <i class="fa-solid fa-paperclip"></i>
                 </button>
+
+                <!-- Microphone button (UI) -->
                 <button
+                  type="button"
                   class="h-11 w-11 rounded-xl border border-black/10 bg-white hover:bg-appBg transition flex items-center justify-center text-ink/70"
                   aria-label="Voice input"
                   title="Voice"
@@ -336,15 +276,16 @@
                   <i class="fa-solid fa-microphone"></i>
                 </button>
 
-                <!-- Text input -->
+                <!-- Input -->
                 <div class="flex-1">
                   <label class="sr-only" for="chatInput">Message</label>
                   <div class="relative">
                     <input
                       id="chatInput"
                       type="text"
-                      placeholder="Ask BurgerPrintsAgent to compare factories, optimize pricing, or configure SKUs…"
+                      placeholder="Ask BurgerPrintsAgent to compare factories, optimize fulfillment, or discover SKUs…"
                       class="w-full h-11 rounded-xl border border-black/10 bg-appBg/40 px-4 pr-12 text-sm outline-none focus:ring-4 focus:ring-brandBlue/15 focus:border-brandBlue/40"
+                      autocomplete="off"
                     />
                     <span class="absolute right-3 top-1/2 -translate-y-1/2 text-ink/35 text-xs font-semibold">⌘⏎</span>
                   </div>
@@ -352,33 +293,39 @@
 
                 <!-- Send button -->
                 <button
-                  class="h-11 px-4 rounded-xl bg-brandBlue text-white font-semibold text-sm shadow-sm hover:brightness-110 active:brightness-95 transition"
+                  id="sendBtn"
+                  type="submit"
+                  class="h-11 px-4 rounded-xl bg-brandBlue text-white font-semibold text-sm shadow-sm hover:brightness-110 active:brightness-95 transition disabled:opacity-50 disabled:cursor-not-allowed"
                   aria-label="Send message"
                 >
                   <i class="fa-solid fa-paper-plane mr-2"></i> Send
                 </button>
-              </div>
+              </form>
+
               <div class="mt-2 text-[11px] text-ink/50">
-                Tip: Add constraints like MOQ, max base cost, target margin, and preferred regions.
+                Tip: add constraints like max base cost, region, production time, and print method (DTG/DTF).
               </div>
             </div>
           </div>
         </section>
 
-        <!-- =========================
-             RIGHT PANEL — CANVAS (60%)
-        ========================== -->
+        <!-- =====================================================
+             RIGHT PANEL — DECISION CANVAS (Factory Comparison)
+             - Landing: hidden
+             - Active: 60% width
+        ====================================================== -->
         <section
-          class="lg:basis-3/5 h-full rounded-2xl bg-white shadow-soft border border-black/5 overflow-hidden flex flex-col"
-          aria-label="Dynamic canvas panel"
+          id="canvasPanel"
+          class="hidden h-full rounded-2xl bg-white shadow-soft border border-black/5 overflow-hidden flex-col transition-all duration-500 ease-out lg:basis-3/5"
+          aria-label="Decision canvas panel"
         >
-          <!-- Tabs header -->
-          <header class="px-5 pt-5 pb-3 border-b border-black/5 bg-white">
+          <!-- Canvas header -->
+          <header class="px-5 pt-5 pb-4 border-b border-black/5 bg-white">
             <div class="flex items-start justify-between gap-3">
               <div>
-                <h2 class="text-lg sm:text-xl font-extrabold tracking-tight">Decision Canvas</h2>
+                <h2 class="text-lg sm:text-xl font-extrabold tracking-tight">Factory Comparison</h2>
                 <p class="text-sm text-ink/60 mt-1">
-                  Compare factories, configure a SKU, and push a ready-to-sell listing.
+                  Compare base costs, production speed, and recommended options side-by-side.
                 </p>
               </div>
               <div class="hidden sm:flex items-center gap-2">
@@ -387,329 +334,133 @@
                 </span>
               </div>
             </div>
-
-            <!-- Tabs -->
-            <nav class="mt-4" aria-label="Canvas tabs">
-              <div class="inline-flex rounded-2xl bg-appBg p-1 border border-black/5">
-                <button
-                  class="tab-btn px-4 py-2 rounded-xl text-sm font-semibold transition"
-                  data-tab="comparison"
-                  aria-selected="true"
-                >
-                  <i class="fa-solid fa-table-columns mr-2 text-ink/60"></i>
-                  Factory Comparison
-                </button>
-                <button
-                  class="tab-btn px-4 py-2 rounded-xl text-sm font-semibold transition"
-                  data-tab="sku"
-                  aria-selected="false"
-                >
-                  <i class="fa-solid fa-cubes mr-2 text-ink/60"></i>
-                  SKU Configuration & Preview
-                </button>
-              </div>
-            </nav>
           </header>
 
-          <!-- Content area -->
-          <div class="flex-1 overflow-y-auto nice-scrollbar bg-gradient-to-b from-white to-appBg/60">
-            <!-- TAB 1: Factory Comparison -->
-            <section id="tab-comparison" class="tab-panel p-5">
-              <div class="grid grid-cols-1 xl:grid-cols-3 gap-4">
-                <!-- Summary card -->
-                <div class="xl:col-span-1 rounded-2xl bg-white border border-black/5 shadow-sm p-4">
-                  <div class="flex items-start justify-between gap-3">
-                    <div>
-                      <div class="text-sm font-bold">Best pick (value + clarity)</div>
-                      <div class="text-sm text-ink/60 mt-1">Atlas POD Works — strong balance across metrics.</div>
-                    </div>
-                    <div class="h-10 w-10 rounded-xl bg-brandOrange text-white flex items-center justify-center shadow-sm">
-                      <i class="fa-solid fa-trophy"></i>
+          <!-- Canvas content -->
+          <div class="flex-1 overflow-y-auto nice-scrollbar bg-gradient-to-b from-white to-appBg/60 p-5">
+            <!-- Winner + quick metrics -->
+            <div class="grid grid-cols-1 xl:grid-cols-3 gap-4">
+              <div class="xl:col-span-1 rounded-2xl bg-white border border-black/5 shadow-sm p-4">
+                <div class="flex items-start justify-between gap-3">
+                  <div>
+                    <div class="text-sm font-bold">Best Overall Choice</div>
+                    <div id="winnerSubtitle" class="text-sm text-ink/60 mt-1">
+                      Submit a query to see the recommended factory.
                     </div>
                   </div>
-                  <div class="mt-4 grid grid-cols-3 gap-2">
-                    <div class="rounded-xl bg-appBg/60 border border-black/5 p-3">
-                      <div class="text-[11px] text-ink/60">Base</div>
-                      <div class="text-sm font-extrabold">$14.10</div>
-                    </div>
-                    <div class="rounded-xl bg-appBg/60 border border-black/5 p-3">
-                      <div class="text-[11px] text-ink/60">Ship</div>
-                      <div class="text-sm font-extrabold">3–6d</div>
-                    </div>
-                    <div class="rounded-xl bg-appBg/60 border border-black/5 p-3">
-                      <div class="text-[11px] text-ink/60">Quality</div>
-                      <div class="text-sm font-extrabold">8.8</div>
-                    </div>
-                  </div>
-                  <button class="mt-4 w-full h-11 rounded-xl bg-brandBlue text-white font-semibold hover:brightness-110 transition">
-                    <i class="fa-solid fa-file-circle-check mr-2"></i> Generate sourcing report
-                  </button>
-                </div>
-
-                <!-- Comparison table -->
-                <div class="xl:col-span-2 rounded-2xl bg-white border border-black/5 shadow-sm p-4 overflow-hidden">
-                  <div class="flex items-center justify-between gap-3">
-                    <div>
-                      <div class="text-sm font-bold">Factory matrix</div>
-                      <div class="text-sm text-ink/60 mt-1">Compare key metrics for hoodie production.</div>
-                    </div>
-                    <div class="flex items-center gap-2 text-xs text-ink/60">
-                      <span class="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-appBg border border-black/5">
-                        <span class="h-2 w-2 rounded-full bg-brandOrange"></span> Winner
-                      </span>
-                    </div>
-                  </div>
-
-                  <div class="mt-4 overflow-x-auto">
-                    <table class="w-full text-left border-separate border-spacing-0">
-                      <thead>
-                        <tr class="text-xs text-ink/60">
-                          <th class="py-3 px-3 font-semibold border-b border-black/10">Factory</th>
-                          <th class="py-3 px-3 font-semibold border-b border-black/10">Base Cost</th>
-                          <th class="py-3 px-3 font-semibold border-b border-black/10">Shipping Time</th>
-                          <th class="py-3 px-3 font-semibold border-b border-black/10">Quality Score</th>
-                          <th class="py-3 px-3 font-semibold border-b border-black/10">Notes</th>
-                        </tr>
-                      </thead>
-                      <tbody class="text-sm">
-                        <tr class="bg-white hover:bg-appBg/40 transition">
-                          <td class="py-3 px-3 border-b border-black/5">
-                            <div class="font-bold">Northstar Prints</div>
-                            <div class="text-xs text-ink/60">Nevada, US</div>
-                          </td>
-                          <td class="py-3 px-3 border-b border-black/5">$15.20</td>
-                          <td class="py-3 px-3 border-b border-black/5">2–4 days</td>
-                          <td class="py-3 px-3 border-b border-black/5">
-                            <span class="inline-flex items-center gap-2">
-                              <span class="h-2 w-2 rounded-full bg-emerald-500"></span>
-                              9.2 / 10
-                            </span>
-                          </td>
-                          <td class="py-3 px-3 border-b border-black/5 text-ink/70">
-                            Fastest US fulfillment. Slightly higher base.
-                          </td>
-                        </tr>
-
-                        <!-- Winner row highlighted with brand orange -->
-                        <tr class="bg-brandOrange/10 hover:bg-brandOrange/15 transition">
-                          <td class="py-3 px-3 border-b border-brandOrange/20">
-                            <div class="flex items-center gap-2">
-                              <div class="font-extrabold">Atlas POD Works</div>
-                              <span class="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-brandOrange text-white text-[11px] font-bold">
-                                <i class="fa-solid fa-trophy"></i> Winner
-                              </span>
-                            </div>
-                            <div class="text-xs text-ink/70">Texas, US</div>
-                          </td>
-                          <td class="py-3 px-3 border-b border-brandOrange/20 font-extrabold">$14.10</td>
-                          <td class="py-3 px-3 border-b border-brandOrange/20 font-semibold">3–6 days</td>
-                          <td class="py-3 px-3 border-b border-brandOrange/20 font-semibold">8.8 / 10</td>
-                          <td class="py-3 px-3 border-b border-brandOrange/20 text-ink/80">
-                            Best value while keeping crisp prints (DTF).
-                          </td>
-                        </tr>
-
-                        <tr class="bg-white hover:bg-appBg/40 transition">
-                          <td class="py-3 px-3 border-b border-black/5">
-                            <div class="font-bold">Kyoto Ink Lab</div>
-                            <div class="text-xs text-ink/60">Osaka, JP</div>
-                          </td>
-                          <td class="py-3 px-3 border-b border-black/5">$16.40</td>
-                          <td class="py-3 px-3 border-b border-black/5">6–9 days</td>
-                          <td class="py-3 px-3 border-b border-black/5">
-                            <span class="inline-flex items-center gap-2">
-                              <span class="h-2 w-2 rounded-full bg-emerald-500"></span>
-                              9.6 / 10
-                            </span>
-                          </td>
-                          <td class="py-3 px-3 border-b border-black/5 text-ink/70">
-                            Top-tier output; slower shipping to US.
-                          </td>
-                        </tr>
-                      </tbody>
-                    </table>
-                  </div>
-
-                  <!-- Bottom actions -->
-                  <div class="mt-4 flex flex-col sm:flex-row gap-2">
-                    <button class="h-11 px-4 rounded-xl bg-white border border-black/10 font-semibold text-sm hover:bg-appBg transition">
-                      <i class="fa-solid fa-filter mr-2 text-ink/60"></i> Refine filters
-                    </button>
-                    <button class="h-11 px-4 rounded-xl bg-brandBlue text-white font-semibold text-sm hover:brightness-110 transition sm:ml-auto">
-                      <i class="fa-solid fa-check mr-2"></i> Select Atlas POD Works
-                    </button>
+                  <div class="h-10 w-10 rounded-xl bg-brandOrange text-white flex items-center justify-center shadow-sm">
+                    <i class="fa-solid fa-trophy"></i>
                   </div>
                 </div>
+
+                <div class="mt-4 grid grid-cols-3 gap-2">
+                  <div class="rounded-xl bg-appBg/60 border border-black/5 p-3">
+                    <div class="text-[11px] text-ink/60">Base</div>
+                    <div id="winnerBase" class="text-sm font-extrabold">—</div>
+                  </div>
+                  <div class="rounded-xl bg-appBg/60 border border-black/5 p-3">
+                    <div class="text-[11px] text-ink/60">Production</div>
+                    <div id="winnerProd" class="text-sm font-extrabold">—</div>
+                  </div>
+                  <div class="rounded-xl bg-appBg/60 border border-black/5 p-3">
+                    <div class="text-[11px] text-ink/60">Quality</div>
+                    <div id="winnerQuality" class="text-sm font-extrabold">—</div>
+                  </div>
+                </div>
+
+                <button
+                  id="exportBtn"
+                  type="button"
+                  class="mt-4 w-full h-11 rounded-xl bg-brandBlue text-white font-semibold hover:brightness-110 transition disabled:opacity-50 disabled:cursor-not-allowed"
+                  disabled
+                >
+                  <i class="fa-solid fa-file-circle-check mr-2"></i> Export comparison snapshot
+                </button>
               </div>
-            </section>
 
-            <!-- TAB 2: SKU Configuration & Preview -->
-            <section id="tab-sku" class="tab-panel p-5 hidden">
-              <div class="grid grid-cols-1 xl:grid-cols-2 gap-4">
-                <!-- Mockup / 3D placeholder -->
-                <div class="rounded-2xl bg-white border border-black/5 shadow-sm p-4">
-                  <div class="flex items-start justify-between gap-3">
-                    <div>
-                      <div class="text-sm font-bold">Product mockup</div>
-                      <div class="text-sm text-ink/60 mt-1">3D preview placeholder (connect your renderer later).</div>
-                    </div>
-                    <button class="h-10 w-10 rounded-xl border border-black/10 bg-white hover:bg-appBg transition text-ink/70" title="Reset view" aria-label="Reset view">
-                      <i class="fa-solid fa-rotate-right"></i>
-                    </button>
+              <!-- Comparison table -->
+              <div class="xl:col-span-2 rounded-2xl bg-white border border-black/5 shadow-sm p-4 overflow-hidden">
+                <div class="flex items-center justify-between gap-3">
+                  <div>
+                    <div class="text-sm font-bold">Comparison Table</div>
+                    <div class="text-sm text-ink/60 mt-1">Factory-level view derived from the latest result.</div>
                   </div>
-
-                  <!-- Visual mockup placeholder -->
-                  <div class="mt-4 aspect-[4/3] rounded-2xl border border-black/10 overflow-hidden relative bg-gradient-to-br from-appBg to-white">
-                    <!-- "3D" stage -->
-                    <div class="absolute inset-0 flex items-center justify-center p-6">
-                      <div class="w-full h-full rounded-2xl bg-white/70 border border-black/10 shadow-soft relative overflow-hidden">
-                        <!-- Decorative glow -->
-                        <div class="absolute -top-24 -right-24 w-64 h-64 rounded-full bg-brandBlue/15 blur-2xl"></div>
-                        <div class="absolute -bottom-24 -left-24 w-64 h-64 rounded-full bg-brandOrange/15 blur-2xl"></div>
-
-                        <div class="absolute inset-0 flex items-center justify-center">
-                          <div class="text-center">
-                            <div class="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-white border border-black/10 text-xs font-semibold">
-                              <i class="fa-solid fa-cube text-brandOrange"></i> 3D / Mockup Stage
-                            </div>
-                            <div class="mt-4 text-2xl sm:text-3xl font-extrabold tracking-tight">
-                              <span class="text-brandBlue">BURGER</span><span class="text-brandOrange">PRINTS</span>
-                            </div>
-                            <div class="mt-2 text-sm text-ink/60">
-                              Replace with your hoodie render, images, or live customization preview.
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-
-                  <!-- Mockup metadata -->
-                  <div class="mt-4 grid grid-cols-3 gap-2">
-                    <div class="rounded-xl bg-appBg/60 border border-black/5 p-3">
-                      <div class="text-[11px] text-ink/60">Method</div>
-                      <div class="text-sm font-extrabold">DTF</div>
-                    </div>
-                    <div class="rounded-xl bg-appBg/60 border border-black/5 p-3">
-                      <div class="text-[11px] text-ink/60">Fabric</div>
-                      <div class="text-sm font-extrabold">450gsm</div>
-                    </div>
-                    <div class="rounded-xl bg-appBg/60 border border-black/5 p-3">
-                      <div class="text-[11px] text-ink/60">SKU</div>
-                      <div class="text-sm font-extrabold">AT-HDY</div>
-                    </div>
-                  </div>
-                </div>
-
-                <!-- Controls / configuration -->
-                <div class="rounded-2xl bg-white border border-black/5 shadow-sm p-4">
-                  <div class="flex items-start justify-between gap-3">
-                    <div>
-                      <div class="text-sm font-bold">Variant controls</div>
-                      <div class="text-sm text-ink/60 mt-1">Configure sizes, colors, pricing & listing details.</div>
-                    </div>
-                    <span class="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-brandBlue/10 text-brandBlue text-xs font-semibold border border-brandBlue/20">
-                      <i class="fa-solid fa-wand-magic-sparkles"></i> Optimized
+                  <div class="flex items-center gap-2 text-xs text-ink/60">
+                    <span class="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-appBg border border-black/5">
+                      <span class="h-2 w-2 rounded-full bg-brandOrange"></span> Winner
                     </span>
                   </div>
+                </div>
 
-                  <!-- Factory + SKU -->
-                  <div class="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    <div class="rounded-xl border border-black/10 bg-appBg/40 p-3">
-                      <div class="text-[11px] text-ink/60">Factory</div>
-                      <div class="mt-1 font-extrabold">Atlas POD Works</div>
-                      <div class="text-xs text-ink/60 mt-1"><i class="fa-solid fa-location-dot text-brandOrange mr-1"></i> Texas, US</div>
-                    </div>
-                    <div class="rounded-xl border border-black/10 bg-white p-3">
-                      <div class="text-[11px] text-ink/60">Factory SKU</div>
-                      <div class="mt-1 font-extrabold">AT-HDY-450gsm</div>
-                      <div class="text-xs text-ink/60 mt-1">Premium Heavyweight Hoodie</div>
-                    </div>
-                  </div>
-
-                  <!-- Size dropdown -->
-                  <div class="mt-4">
-                    <label for="size" class="text-sm font-semibold">Size</label>
-                    <div class="mt-2 relative">
-                      <select
-                        id="size"
-                        class="w-full h-11 rounded-xl border border-black/10 bg-white px-4 text-sm outline-none focus:ring-4 focus:ring-brandBlue/15 focus:border-brandBlue/40"
-                      >
-                        <option selected>Unisex S</option>
-                        <option>Unisex M</option>
-                        <option>Unisex L</option>
-                        <option>Unisex XL</option>
-                        <option>Unisex 2XL</option>
-                      </select>
-                      <i class="fa-solid fa-chevron-down absolute right-4 top-1/2 -translate-y-1/2 text-ink/35 pointer-events-none"></i>
-                    </div>
-                  </div>
-
-                  <!-- Color swatches -->
-                  <div class="mt-4">
-                    <div class="flex items-center justify-between gap-3">
-                      <label class="text-sm font-semibold">Color</label>
-                      <div class="text-xs text-ink/60">Optimized for print pop</div>
-                    </div>
-                    <div class="mt-2 flex flex-wrap gap-2">
-                      <!-- Swatches are buttons for a “real” feeling UI -->
-                      <button class="h-10 px-3 rounded-xl border border-black/10 bg-white hover:bg-appBg transition text-sm font-semibold flex items-center gap-2">
-                        <span class="h-4 w-4 rounded-full bg-black border border-black/20"></span> Black
-                      </button>
-                      <button class="h-10 px-3 rounded-xl border border-black/10 bg-white hover:bg-appBg transition text-sm font-semibold flex items-center gap-2">
-                        <span class="h-4 w-4 rounded-full bg-slate-200 border border-black/10"></span> Ash
-                      </button>
-                      <button class="h-10 px-3 rounded-xl border border-black/10 bg-white hover:bg-appBg transition text-sm font-semibold flex items-center gap-2">
-                        <span class="h-4 w-4 rounded-full bg-indigo-600 border border-black/10"></span> Indigo
-                      </button>
-                      <button class="h-10 px-3 rounded-xl border border-black/10 bg-white hover:bg-appBg transition text-sm font-semibold flex items-center gap-2">
-                        <span class="h-4 w-4 rounded-full bg-amber-500 border border-black/10"></span> Gold
-                      </button>
-                    </div>
-                  </div>
-
-                  <!-- Pricing block -->
-                  <div class="mt-4 grid grid-cols-1 sm:grid-cols-3 gap-3">
-                    <div class="rounded-xl bg-appBg/60 border border-black/5 p-3">
-                      <div class="text-[11px] text-ink/60">Base cost</div>
-                      <div class="text-lg font-extrabold">$14.10</div>
-                      <div class="text-[11px] text-ink/50 mt-0.5">incl. standard print</div>
-                    </div>
-                    <div class="rounded-xl bg-appBg/60 border border-black/5 p-3">
-                      <div class="text-[11px] text-ink/60">Suggested price</div>
-                      <div class="text-lg font-extrabold">$44.00</div>
-                      <div class="text-[11px] text-ink/50 mt-0.5">target premium margin</div>
-                    </div>
-                    <div class="rounded-xl bg-white border border-black/10 p-3">
-                      <div class="text-[11px] text-ink/60">Est. profit</div>
-                      <div class="text-lg font-extrabold text-emerald-600">$22.30</div>
-                      <div class="text-[11px] text-ink/50 mt-0.5">after fees estimate</div>
-                    </div>
-                  </div>
-
-                  <!-- CTA -->
-                  <div class="mt-4 flex flex-col sm:flex-row gap-2">
-                    <button class="h-11 px-4 rounded-xl bg-white border border-black/10 font-semibold text-sm hover:bg-appBg transition">
-                      <i class="fa-solid fa-copy mr-2 text-ink/60"></i> Copy listing copy
-                    </button>
-                    <button class="h-11 px-4 rounded-xl bg-brandBlue text-white font-semibold text-sm shadow-sm hover:brightness-110 active:brightness-95 transition sm:ml-auto">
-                      <i class="fa-solid fa-store mr-2"></i> Push to Store
-                    </button>
-                  </div>
-
-                  <div class="mt-3 text-[11px] text-ink/50">
-                    “Push to Store” is a UI placeholder — connect your Shopify/Etsy integration later.
-                  </div>
+                <div class="mt-4 overflow-x-auto">
+                  <table class="w-full text-left border-separate border-spacing-0">
+                    <thead>
+                      <tr class="text-xs text-ink/60">
+                        <th class="py-3 px-3 font-semibold border-b border-black/10">Factory</th>
+                        <th class="py-3 px-3 font-semibold border-b border-black/10">Base Cost</th>
+                        <th class="py-3 px-3 font-semibold border-b border-black/10">Production Time</th>
+                        <th class="py-3 px-3 font-semibold border-b border-black/10">Shipping Time</th>
+                        <th class="py-3 px-3 font-semibold border-b border-black/10">Quality Score</th>
+                        <th class="py-3 px-3 font-semibold border-b border-black/10">Capacity</th>
+                      </tr>
+                    </thead>
+                    <tbody id="factoryTableBody" class="text-sm"></tbody>
+                  </table>
                 </div>
               </div>
-            </section>
+            </div>
+
+            <!-- Insights + Ranking -->
+            <div class="mt-4 grid grid-cols-1 xl:grid-cols-3 gap-4">
+              <!-- Insights -->
+              <section class="xl:col-span-1 rounded-2xl bg-white border border-black/5 shadow-sm p-4">
+                <div class="flex items-center justify-between gap-3">
+                  <div>
+                    <div class="text-sm font-bold">Insights</div>
+                    <div class="text-sm text-ink/60 mt-1">Quick takeaways from the latest run.</div>
+                  </div>
+                  <div class="h-10 w-10 rounded-xl bg-appBg border border-black/10 flex items-center justify-center text-ink/70">
+                    <i class="fa-solid fa-lightbulb"></i>
+                  </div>
+                </div>
+                <ul id="insightsList" class="mt-4 space-y-2 text-sm text-ink/75">
+                  <li class="flex gap-2">
+                    <span class="mt-0.5 text-brandOrange"><i class="fa-solid fa-bolt"></i></span>
+                    <span>Run a query to identify the lowest cost factory.</span>
+                  </li>
+                  <li class="flex gap-2">
+                    <span class="mt-0.5 text-brandOrange"><i class="fa-solid fa-bolt"></i></span>
+                    <span>Run a query to highlight the fastest production option.</span>
+                  </li>
+                  <li class="flex gap-2">
+                    <span class="mt-0.5 text-brandOrange"><i class="fa-solid fa-bolt"></i></span>
+                    <span>Run a query to select the best overall trade-off.</span>
+                  </li>
+                </ul>
+              </section>
+
+              <!-- Ranking cards -->
+              <section class="xl:col-span-2 rounded-2xl bg-white border border-black/5 shadow-sm p-4">
+                <div class="flex items-center justify-between gap-3">
+                  <div>
+                    <div class="text-sm font-bold">Top Recommendations</div>
+                    <div class="text-sm text-ink/60 mt-1">Top 3 factory options with a scoring breakdown.</div>
+                  </div>
+                  <span class="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-brandOrange/10 text-brandOrange text-xs font-semibold border border-brandOrange/20">
+                    <i class="fa-solid fa-award"></i> Ranked
+                  </span>
+                </div>
+
+                <div id="rankingCards" class="mt-4 grid grid-cols-1 sm:grid-cols-3 gap-3"></div>
+              </section>
+            </div>
           </div>
 
-          <!-- Footer strip -->
+          <!-- Canvas footer -->
           <footer class="px-5 py-3 border-t border-black/5 bg-white">
             <div class="flex flex-col sm:flex-row sm:items-center gap-2 justify-between">
               <div class="text-xs text-ink/60">
-                <span class="font-semibold">BurgerPrintsAgent</span> • premium sourcing UI prototype
+                <span class="font-semibold">BurgerPrintsAgent</span> • AI Chat + Factory Decision Canvas
               </div>
               <div class="flex items-center gap-2 text-xs">
                 <span class="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-appBg border border-black/5 text-ink/70">
@@ -724,42 +475,495 @@
 
     <script>
       // ==========================================================
-      // Minimal JS: tab switching (interactive-looking, production-ish)
+      // BurgerPrintsAgent — UI Controller (single-file, vanilla JS)
       // ==========================================================
-      const tabButtons = Array.from(document.querySelectorAll(".tab-btn"));
-      const panels = {
-        comparison: document.getElementById("tab-comparison"),
-        sku: document.getElementById("tab-sku"),
+
+      // ----------------------------------------------------------
+      // Markdown rendering (safe HTML output)
+      // ----------------------------------------------------------
+      const md = (raw) => {
+        const text = typeof raw === "string" ? raw : String(raw ?? "");
+        if (window.marked && window.DOMPurify) {
+          marked.setOptions({ gfm: true, breaks: true });
+          return DOMPurify.sanitize(marked.parse(text));
+        }
+        return text.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll("\n", "<br/>");
       };
 
-      function setActiveTab(tabName) {
-        tabButtons.forEach((btn) => {
-          const isActive = btn.dataset.tab === tabName;
-          btn.setAttribute("aria-selected", String(isActive));
-          btn.classList.toggle("bg-white", isActive);
-          btn.classList.toggle("shadow-sm", isActive);
-          btn.classList.toggle("text-ink", isActive);
-          btn.classList.toggle("text-ink/70", !isActive);
-        });
-        Object.entries(panels).forEach(([name, el]) => {
-          el.classList.toggle("hidden", name !== tabName);
-        });
-      }
-
-      tabButtons.forEach((btn) => btn.addEventListener("click", () => setActiveTab(btn.dataset.tab)));
-
-      // Initialize
-      setActiveTab("comparison");
-
-      // Keyboard nicety: Cmd/Ctrl+Enter focuses send behavior (UI-only)
+      // ----------------------------------------------------------
+      // DOM elements
+      // ----------------------------------------------------------
+      const chatPanel = document.getElementById("chatPanel");
+      const canvasPanel = document.getElementById("canvasPanel");
+      const landing = document.getElementById("landing");
+      const messagesEl = document.getElementById("messages");
+      const chatScroll = document.getElementById("chatScroll");
+      const chatForm = document.getElementById("chatForm");
       const chatInput = document.getElementById("chatInput");
-      chatInput?.addEventListener("keydown", (e) => {
+      const sendBtn = document.getElementById("sendBtn");
+
+      const factoryTableBody = document.getElementById("factoryTableBody");
+      const winnerSubtitle = document.getElementById("winnerSubtitle");
+      const winnerBase = document.getElementById("winnerBase");
+      const winnerProd = document.getElementById("winnerProd");
+      const winnerQuality = document.getElementById("winnerQuality");
+      const exportBtn = document.getElementById("exportBtn");
+      const insightsList = document.getElementById("insightsList");
+      const rankingCards = document.getElementById("rankingCards");
+
+      // ----------------------------------------------------------
+      // App state
+      // ----------------------------------------------------------
+      const state = {
+        active: false,
+        loading: false,
+        sessionId: localStorage.getItem("bp_session_id") || crypto.randomUUID(),
+        messages: [],
+        lastResult: null,
+      };
+      localStorage.setItem("bp_session_id", state.sessionId);
+
+      // ----------------------------------------------------------
+      // State transitions: Landing <-> Active Search
+      // ----------------------------------------------------------
+      const setActiveState = (isActive) => {
+        state.active = Boolean(isActive);
+
+        if (state.active) {
+          chatPanel.classList.remove("lg:basis-full");
+          chatPanel.classList.add("lg:basis-2/5");
+          canvasPanel.classList.remove("hidden");
+          canvasPanel.classList.add("flex");
+          landing.classList.add("hidden");
+          messagesEl.classList.remove("hidden");
+        } else {
+          chatPanel.classList.remove("lg:basis-2/5");
+          chatPanel.classList.add("lg:basis-full");
+          canvasPanel.classList.add("hidden");
+          canvasPanel.classList.remove("flex");
+          landing.classList.remove("hidden");
+          messagesEl.classList.add("hidden");
+        }
+      };
+
+      // ----------------------------------------------------------
+      // Message rendering
+      // ----------------------------------------------------------
+      const scrollToBottom = () => {
+        chatScroll.scrollTo({ top: chatScroll.scrollHeight, behavior: "smooth" });
+      };
+
+      const bubble = (role, html) => {
+        const wrapper = document.createElement("div");
+
+        if (role === "user") {
+          wrapper.className = "flex justify-end";
+          wrapper.innerHTML = `
+            <div class="max-w-[92%] sm:max-w-[80%]">
+              <div class="rounded-2xl rounded-tr-sm bg-brandBlue text-white px-4 py-3 shadow-sm">
+                <div class="text-sm leading-relaxed">${html}</div>
+              </div>
+            </div>
+          `;
+          return wrapper;
+        }
+
+        wrapper.className = "flex justify-start";
+        wrapper.innerHTML = `
+          <div class="max-w-[96%] sm:max-w-[86%]">
+            <div class="flex items-start gap-3">
+              <div class="h-9 w-9 rounded-xl bg-white border border-black/10 shadow-sm flex items-center justify-center shrink-0">
+                <i class="fa-solid fa-robot text-ink/70"></i>
+              </div>
+              <div class="rounded-2xl rounded-tl-sm bg-white border border-black/5 px-4 py-3 shadow-sm w-full">
+                <div class="prose prose-sm max-w-none prose-table:w-full prose-table:text-sm prose-th:text-ink/70 prose-td:text-ink/80 prose-a:text-brandBlue prose-strong:text-ink">
+                  ${html}
+                </div>
+                <div class="mt-4" data-rec-cards></div>
+              </div>
+            </div>
+          </div>
+        `;
+        return wrapper;
+      };
+
+      const renderRecommendationCards = (container, factories) => {
+        if (!container) return;
+        container.innerHTML = "";
+
+        const top = (factories || []).slice(0, 3);
+        if (!top.length) return;
+
+        const tagForRank = (i) => {
+          if (i === 0) return { label: "Recommended", icon: "fa-award" };
+          if (i === 1) return { label: "Best Price", icon: "fa-tag" };
+          return { label: "Fastest Shipping", icon: "fa-truck-fast" };
+        };
+
+        const grid = document.createElement("div");
+        grid.className = "grid grid-cols-1 sm:grid-cols-3 gap-3";
+
+        top.forEach((f, i) => {
+          const tag = tagForRank(i);
+          const card = document.createElement("div");
+          card.className = "rounded-xl border border-black/10 bg-appBg/50 p-3 hover:shadow-sm transition";
+          card.innerHTML = `
+            <div class="flex items-start justify-between gap-2">
+              <div>
+                <div class="text-xs font-bold tracking-tight">${f.name}</div>
+                <div class="text-[11px] text-ink/60 mt-0.5">
+                  <i class="fa-solid fa-location-dot text-brandOrange mr-1"></i> ${f.location}
+                </div>
+              </div>
+              <span class="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-brandOrange/10 text-brandOrange text-[11px] font-semibold border border-brandOrange/20">
+                <i class="fa-solid ${tag.icon}"></i> ${tag.label}
+              </span>
+            </div>
+            <div class="mt-3 flex items-center justify-between text-[11px] text-ink/70">
+              <span>Base cost</span><span class="font-semibold">${f.baseCost}</span>
+            </div>
+            <div class="mt-2 flex items-center justify-between text-[11px] text-ink/70">
+              <span>Production</span><span class="font-semibold">${f.productionTime}</span>
+            </div>
+            <div class="mt-2 flex items-center justify-between text-[11px] text-ink/70">
+              <span>Quality</span><span class="font-semibold">${f.qualityScore}</span>
+            </div>
+          `;
+          grid.appendChild(card);
+        });
+
+        container.appendChild(grid);
+      };
+
+      const addMessage = (role, content, meta = null) => {
+        const html = role === "assistant" ? md(content) : md(content);
+        const node = bubble(role, html);
+        messagesEl.appendChild(node);
+
+        // Attach recommendation cards to the most recent assistant message (if provided).
+        if (role === "assistant" && meta?.factories) {
+          const cardsHost = node.querySelector("[data-rec-cards]");
+          renderRecommendationCards(cardsHost, meta.factories);
+        }
+
+        scrollToBottom();
+      };
+
+      // ----------------------------------------------------------
+      // Decision Canvas rendering
+      // ----------------------------------------------------------
+      const fmtMoney = (n) => {
+        const v = Number(n);
+        if (!Number.isFinite(v)) return "—";
+        return `$${v.toFixed(2)}`;
+      };
+
+      const deriveFactoriesFromProducts = (products) => {
+        const byName = new Map();
+        (products || []).forEach((p) => {
+          const partners = Array.isArray(p?.partners) ? p.partners : [];
+          partners.forEach((name) => {
+            const key = String(name || "").trim();
+            if (!key) return;
+            const prev = byName.get(key) || { name: key, minBase: Infinity, anyProd: null, scoreSum: 0, scoreCount: 0, locations: new Set() };
+
+            const priceMin = Number(p?.price_min);
+            if (Number.isFinite(priceMin)) prev.minBase = Math.min(prev.minBase, priceMin);
+
+            const prod = p?.processing_time || null;
+            if (!prev.anyProd && prod) prev.anyProd = prod;
+
+            const s = Number(p?.score);
+            if (Number.isFinite(s)) {
+              prev.scoreSum += s;
+              prev.scoreCount += 1;
+            }
+
+            const loc = p?.location || "";
+            if (loc) prev.locations.add(loc);
+
+            byName.set(key, prev);
+          });
+        });
+
+        const list = Array.from(byName.values()).map((f) => {
+          const avgScore = f.scoreCount ? f.scoreSum / f.scoreCount : null;
+          return {
+            name: f.name,
+            location: f.locations.size ? Array.from(f.locations).join(", ") : "—",
+            baseCost: f.minBase !== Infinity ? fmtMoney(f.minBase) : "—",
+            productionTime: f.anyProd || "—",
+            shippingTime: "—",
+            qualityScore: avgScore ? `${avgScore.toFixed(0)} / 100` : "—",
+            capacity: "—",
+            avgScore: avgScore || 0,
+          };
+        });
+
+        list.sort((a, b) => b.avgScore - a.avgScore);
+        return list.slice(0, 8);
+      };
+
+      const renderCanvas = (result) => {
+        const products = result?.products || [];
+        const factories = deriveFactoriesFromProducts(products);
+
+        // Winner (best overall)
+        const winner = factories[0] || null;
+        if (winner) {
+          winnerSubtitle.textContent = `${winner.name} — best balance across cost + speed + quality (derived).`;
+          winnerBase.textContent = winner.baseCost;
+          winnerProd.textContent = winner.productionTime;
+          winnerQuality.textContent = winner.qualityScore;
+          exportBtn.disabled = false;
+        } else {
+          winnerSubtitle.textContent = "Submit a query to see the recommended factory.";
+          winnerBase.textContent = "—";
+          winnerProd.textContent = "—";
+          winnerQuality.textContent = "—";
+          exportBtn.disabled = true;
+        }
+
+        // Table body
+        factoryTableBody.innerHTML = "";
+        factories.forEach((f, idx) => {
+          const tr = document.createElement("tr");
+          const isWinner = idx === 0;
+          tr.className = isWinner ? "bg-brandOrange/10 hover:bg-brandOrange/15 transition" : "bg-white hover:bg-appBg/40 transition";
+          tr.innerHTML = `
+            <td class="py-3 px-3 border-b ${isWinner ? "border-brandOrange/20" : "border-black/5"}">
+              <div class="flex items-center gap-2">
+                <div class="font-${isWinner ? "extrabold" : "bold"}">${f.name}</div>
+                ${isWinner ? `<span class="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-brandOrange text-white text-[11px] font-bold"><i class="fa-solid fa-trophy"></i> Winner</span>` : ""}
+              </div>
+              <div class="text-xs ${isWinner ? "text-ink/70" : "text-ink/60"}">${f.location}</div>
+            </td>
+            <td class="py-3 px-3 border-b ${isWinner ? "border-brandOrange/20 font-extrabold" : "border-black/5"}">${f.baseCost}</td>
+            <td class="py-3 px-3 border-b ${isWinner ? "border-brandOrange/20 font-semibold" : "border-black/5"}">${f.productionTime}</td>
+            <td class="py-3 px-3 border-b ${isWinner ? "border-brandOrange/20" : "border-black/5"}">${f.shippingTime}</td>
+            <td class="py-3 px-3 border-b ${isWinner ? "border-brandOrange/20 font-semibold" : "border-black/5"}">${f.qualityScore}</td>
+            <td class="py-3 px-3 border-b ${isWinner ? "border-brandOrange/20" : "border-black/5"}">${f.capacity}</td>
+          `;
+          factoryTableBody.appendChild(tr);
+        });
+
+        if (!factories.length) {
+          const tr = document.createElement("tr");
+          tr.className = "bg-white";
+          tr.innerHTML = `
+            <td class="py-8 px-3 text-sm text-ink/60 border-b border-black/5" colspan="6">
+              No factory-level data yet. Ask a question to populate the Decision Canvas.
+            </td>
+          `;
+          factoryTableBody.appendChild(tr);
+        }
+
+        // Insights
+        const lowest = [...factories].sort((a, b) => (Number(a.baseCost.replace(/[^0-9.]/g, "")) || Infinity) - (Number(b.baseCost.replace(/[^0-9.]/g, "")) || Infinity))[0];
+        const fastest = factories.find((f) => f.productionTime !== "—") || null;
+
+        const bestOverall = winner ? winner.name : "—";
+        const lowestCost = lowest?.name ? `${lowest.name} (${lowest.baseCost})` : "—";
+        const fastestProd = fastest?.name ? `${fastest.name} (${fastest.productionTime})` : "—";
+
+        insightsList.innerHTML = `
+          <li class="flex gap-2">
+            <span class="mt-0.5 text-brandOrange"><i class="fa-solid fa-bolt"></i></span>
+            <span><span class="font-semibold">Lowest Cost Factory:</span> ${lowestCost}</span>
+          </li>
+          <li class="flex gap-2">
+            <span class="mt-0.5 text-brandOrange"><i class="fa-solid fa-bolt"></i></span>
+            <span><span class="font-semibold">Fastest Production Factory:</span> ${fastestProd}</span>
+          </li>
+          <li class="flex gap-2">
+            <span class="mt-0.5 text-brandOrange"><i class="fa-solid fa-bolt"></i></span>
+            <span><span class="font-semibold">Best Overall Choice:</span> ${bestOverall}</span>
+          </li>
+        `;
+
+        // Ranking cards (Top 3)
+        rankingCards.innerHTML = "";
+        factories.slice(0, 3).forEach((f, i) => {
+          const card = document.createElement("div");
+          card.className = "rounded-xl border border-black/10 bg-white p-3 hover:shadow-sm transition";
+          const rank = i + 1;
+          const score = Math.max(0, Math.min(100, Math.round(f.avgScore || 0)));
+          card.innerHTML = `
+            <div class="flex items-start justify-between gap-2">
+              <div>
+                <div class="text-xs font-bold tracking-tight">#${rank} ${f.name}</div>
+                <div class="text-[11px] text-ink/60 mt-0.5"><i class="fa-solid fa-location-dot text-brandOrange mr-1"></i> ${f.location}</div>
+              </div>
+              <span class="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-appBg text-ink/70 text-[11px] font-semibold border border-black/10">
+                <i class="fa-solid fa-gauge-high text-brandBlue"></i> ${score}/100
+              </span>
+            </div>
+            <div class="mt-3 space-y-2 text-[11px] text-ink/70">
+              <div class="flex items-center justify-between"><span>Base cost</span><span class="font-semibold">${f.baseCost}</span></div>
+              <div class="flex items-center justify-between"><span>Production</span><span class="font-semibold">${f.productionTime}</span></div>
+              <div class="flex items-center justify-between"><span>Quality</span><span class="font-semibold">${f.qualityScore}</span></div>
+            </div>
+            <div class="mt-3 h-2 rounded-full bg-appBg border border-black/5 overflow-hidden">
+              <div class="h-full bg-brandBlue" style="width:${score}%"></div>
+            </div>
+          `;
+          rankingCards.appendChild(card);
+        });
+
+        return factories;
+      };
+
+      // ----------------------------------------------------------
+      // API call: POST /api/chat/
+      // - Uses same-origin by default.
+      // - If the API is unavailable, we fall back to a mock response so the UI remains previewable.
+      // ----------------------------------------------------------
+      const callChatApi = async (query) => {
+        const res = await fetch("/api/chat/", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ query, session_id: state.sessionId }),
+        });
+        if (!res.ok) {
+          const txt = await res.text();
+          throw new Error(txt || `HTTP ${res.status}`);
+        }
+        return await res.json();
+      };
+
+      const mockResult = (query) => ({
+        response:
+          `Here’s a quick factory comparison based on your request:\n\n` +
+          `- Prioritized: speed + cost + print reliability\n` +
+          `- Next: tell me your target region (US/EU) and max base cost\n`,
+        products: [
+          { partners: ["Atlas POD Works"], location: "US", processing_time: "2–3 days", price_min: 7.6, score: 92 },
+          { partners: ["Northstar Prints"], location: "US", processing_time: "1–3 days", price_min: 8.2, score: 90 },
+          { partners: ["Kyoto Ink Lab"], location: "JP", processing_time: "4–6 days", price_min: 9.1, score: 89 },
+        ],
+        intent: "mock",
+        query,
+      });
+
+      // ----------------------------------------------------------
+      // Send flow
+      // ----------------------------------------------------------
+      const setLoading = (isLoading) => {
+        state.loading = Boolean(isLoading);
+        sendBtn.disabled = state.loading;
+        chatInput.disabled = state.loading;
+        sendBtn.innerHTML = state.loading
+          ? `<i class="fa-solid fa-circle-notch fa-spin mr-2"></i> Sending`
+          : `<i class="fa-solid fa-paper-plane mr-2"></i> Send`;
+      };
+
+      const sendQuery = async (query) => {
+        const q = String(query || "").trim();
+        if (!q) return;
+
+        if (!state.active) setActiveState(true);
+
+        addMessage("user", q);
+        setLoading(true);
+
+        // "Typing" placeholder (kept minimal for a production-ready feel)
+        const typing = document.createElement("div");
+        typing.className = "flex justify-start";
+        typing.innerHTML = `
+          <div class="max-w-[96%] sm:max-w-[86%]">
+            <div class="flex items-start gap-3">
+              <div class="h-9 w-9 rounded-xl bg-white border border-black/10 shadow-sm flex items-center justify-center shrink-0">
+                <i class="fa-solid fa-robot text-ink/70"></i>
+              </div>
+              <div class="rounded-2xl rounded-tl-sm bg-white border border-black/5 px-4 py-3 shadow-sm">
+                <div class="text-sm text-ink/60 flex items-center gap-2">
+                  <span class="h-2 w-2 rounded-full bg-brandOrange animate-pulse"></span>
+                  Thinking…
+                </div>
+              </div>
+            </div>
+          </div>
+        `;
+        messagesEl.appendChild(typing);
+        scrollToBottom();
+
+        let result = null;
+        try {
+          result = await callChatApi(q);
+        } catch (e) {
+          result = mockResult(q);
+        } finally {
+          typing.remove();
+          setLoading(false);
+        }
+
+        state.lastResult = result;
+        const factories = renderCanvas(result);
+
+        addMessage("assistant", result?.response || "I couldn’t generate a response. Try rephrasing your query.", { factories });
+      };
+
+      // ----------------------------------------------------------
+      // Events: suggested prompts, form submit, Cmd/Ctrl+Enter
+      // ----------------------------------------------------------
+      document.querySelectorAll("[data-suggested]").forEach((btn) => {
+        btn.addEventListener("click", () => {
+          const text = btn.querySelector(".text-sm.font-bold")?.textContent?.trim() || btn.textContent.trim();
+          chatInput.value = text;
+          sendQuery(text);
+        });
+      });
+
+      chatForm.addEventListener("submit", (e) => {
+        e.preventDefault();
+        const q = chatInput.value;
+        chatInput.value = "";
+        sendQuery(q);
+      });
+
+      chatInput.addEventListener("keydown", (e) => {
         const isCmdEnter = (e.metaKey || e.ctrlKey) && e.key === "Enter";
         if (isCmdEnter) {
-          // Prototype behavior: just clear input to simulate sending.
+          e.preventDefault();
+          const q = chatInput.value;
           chatInput.value = "";
+          sendQuery(q);
         }
       });
+
+      // ----------------------------------------------------------
+      // Export button: copies a minimal snapshot to clipboard
+      // ----------------------------------------------------------
+      exportBtn.addEventListener("click", async () => {
+        if (!state.lastResult) return;
+        const factories = deriveFactoriesFromProducts(state.lastResult?.products || []);
+        const snapshot = {
+          query: state.lastResult?.query || null,
+          intent: state.lastResult?.intent || null,
+          factories: factories.slice(0, 3).map((f) => ({
+            factory: f.name,
+            base_cost: f.baseCost,
+            production_time: f.productionTime,
+            quality_score: f.qualityScore,
+            location: f.location,
+          })),
+        };
+        try {
+          await navigator.clipboard.writeText(JSON.stringify(snapshot, null, 2));
+          exportBtn.innerHTML = `<i class="fa-solid fa-check mr-2"></i> Copied`;
+          setTimeout(() => {
+            exportBtn.innerHTML = `<i class="fa-solid fa-file-circle-check mr-2"></i> Export comparison snapshot`;
+          }, 1200);
+        } catch (e) {
+          exportBtn.innerHTML = `<i class="fa-solid fa-triangle-exclamation mr-2"></i> Copy failed`;
+          setTimeout(() => {
+            exportBtn.innerHTML = `<i class="fa-solid fa-file-circle-check mr-2"></i> Export comparison snapshot`;
+          }, 1200);
+        }
+      });
+
+      // Initial UI state
+      setActiveState(false);
     </script>
   </body>
 </html>

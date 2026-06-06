@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import re
 from copy import deepcopy
-from typing import Any, Dict, Iterable, List, Tuple
+from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 from agent.services.html_parser import normalize_product
 
@@ -125,8 +125,9 @@ def extract_out_of_stock_ids(payload: Any) -> List[str]:
     return sorted(set(ids))
 
 
-def annotate_inventory(products: Iterable[Dict[str, Any]], out_of_stock_ids: Iterable[str]) -> List[Dict[str, Any]]:
-    out_of_stock = {canonicalize_short_code(x) for x in out_of_stock_ids or []}
+def annotate_inventory(products: Iterable[Dict[str, Any]], out_of_stock_ids: Optional[Iterable[str]]) -> List[Dict[str, Any]]:
+    unknown_mode = out_of_stock_ids is None
+    out_of_stock = {canonicalize_short_code(x) for x in (out_of_stock_ids or [])} if not unknown_mode else set()
     annotated: List[Dict[str, Any]] = []
     for product in products or []:
         if not isinstance(product, dict):
@@ -134,6 +135,8 @@ def annotate_inventory(products: Iterable[Dict[str, Any]], out_of_stock_ids: Ite
         item = deepcopy(product)
         code = canonicalize_short_code(item.get("short_code") or item.get("id"))
         if not code:
+            item["inventory_status"] = "unknown"
+        elif unknown_mode:
             item["inventory_status"] = "unknown"
         elif code in out_of_stock:
             item["inventory_status"] = "out_of_stock"

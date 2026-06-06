@@ -2,6 +2,9 @@ from __future__ import annotations
 
 from typing import Any, Dict
 
+import json
+from pathlib import Path
+
 from agent.graph.state import AgentState
 from agent.graph.nodes import (
     compare_node,
@@ -28,6 +31,7 @@ _intent_analyzer = None
 _task_router = None
 _ask = None
 _catalog_responder = None
+_offline_detail_index = None
 
 
 def _get_intent_analyzer():
@@ -272,6 +276,126 @@ def _extract_catalog_focus_terms(query: str) -> list:
     return []
 
 
+def _get_offline_detail_index() -> Dict[str, Dict[str, Any]]:
+    global _offline_detail_index
+    if isinstance(_offline_detail_index, dict):
+        return _offline_detail_index
+
+    path = Path(__file__).resolve().parents[2] / "datajson" / "product_details.json"
+    if not path.exists():
+        _offline_detail_index = {}
+        return _offline_detail_index
+
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        _offline_detail_index = {}
+        return _offline_detail_index
+
+    items = payload.get("result", []) if isinstance(payload, dict) else []
+    index: Dict[str, Dict[str, Any]] = {}
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        short_code = (item.get("short_code") or "").strip().upper()
+        if not short_code:
+            continue
+        if item.get("status") != 200:
+            continue
+        body = item.get("data", {}) if isinstance(item.get("data"), dict) else {}
+        data = body.get("data", body)
+        if isinstance(data, dict) and isinstance(data.get("data"), dict):
+            data = data.get("data")
+        if isinstance(data, dict) and isinstance(data.get("data"), dict):
+            data = data.get("data")
+        variations = data.get("variations") if isinstance(data, dict) else None
+        if not isinstance(variations, list) or not variations:
+            continue
+        min_price = None
+        max_price = None
+        partner_prices: Dict[str, float] = {}
+        partner_max_prices: Dict[str, float] = {}
+        partner_best_variant: Dict[str, Dict[str, Any]] = {}
+        partners = set()
+        for v in variations:
+            if not isinstance(v, dict):
+                continue
+            pn = (v.get("partner_name") or "").strip()
+            if pn:
+                partners.add(pn)
+            try:
+                price = float(v.get("price")) if v.get("price") not in (None, "") else None
+            except Exception:
+                price = None
+            if price is None:
+                continue
+            min_price = price if min_price is None else min(min_price, price)
+            max_price = price if max_price is None else max(max_price, price)
+            if pn:
+                prev = partner_prices.get(pn)
+                partner_prices[pn] = price if prev is None else min(prev, price)
+                prev_max = partner_max_prices.get(pn)
+                partner_max_prices[pn] = price if prev_max is None else max(prev_max, price)
+                if (prev is None) or (price <= prev):
+                    partner_best_variant[pn] = {
+                        "price": float(price),
+                        "sku": v.get("sku"),
+                        "size": v.get("size"),
+                        "color": v.get("color"),
+                        "color_hex": v.get("color_hex"),
+                    }
+        if min_price is None:
+            continue
+        index[short_code] = {
+            "price_min": float(min_price),
+            "price_max": float(max_price) if max_price is not None else float(min_price),
+            "partner_prices": {k: float(v) for k, v in partner_prices.items()},
+            "partner_price_max": {k: float(v) for k, v in partner_max_prices.items()},
+            "partner_best_variant": partner_best_variant,
+            "partners": sorted(partners),
+        }
+
+    _offline_detail_index = index
+    return _offline_detail_index
+
+
+def _enrich_candidates_with_offline_details(products: list) -> None:
+    index = _get_offline_detail_index()
+    if not index:
+        return
+    for p in products or []:
+        if not isinstance(p, dict):
+            continue
+        code = (p.get("short_code") or p.get("id") or "").strip().upper()
+        if not code:
+            continue
+        detail = index.get(code)
+        if not isinstance(detail, dict):
+            continue
+        price_min = p.get("price_min", None)
+        try:
+            price_min_val = float(price_min) if price_min not in (None, "") else 0.0
+        except Exception:
+            price_min_val = 0.0
+        if price_min_val <= 0:
+            p["price_min"] = detail.get("price_min", 0.0)
+        price_max = p.get("price_max", None)
+        try:
+            price_max_val = float(price_max) if price_max not in (None, "") else 0.0
+        except Exception:
+            price_max_val = 0.0
+        if price_max_val <= 0:
+            p["price_max"] = detail.get("price_max", p.get("price_min", 0.0))
+        if not p.get("partner_prices") and isinstance(detail.get("partner_prices"), dict):
+            p["partner_prices"] = detail.get("partner_prices")
+        if not p.get("partner_price_max") and isinstance(detail.get("partner_price_max"), dict):
+            p["partner_price_max"] = detail.get("partner_price_max")
+        if not p.get("partner_best_variant") and isinstance(detail.get("partner_best_variant"), dict):
+            p["partner_best_variant"] = detail.get("partner_best_variant")
+        if (not p.get("partners")) and isinstance(detail.get("partners"), list):
+            p["partners"] = detail.get("partners")
+
+
 def _apply_criteria_filters(state: AgentState) -> AgentState:
     """
     Lọc candidates theo criteria người dùng (partner, color, price, location, print_method)
@@ -317,13 +441,12 @@ def _apply_criteria_filters(state: AgentState) -> AgentState:
             p for p in filtered
             if _loc_match(p.get("location", ""), loc_pref)
         ]
-        if loc_filtered:
-            filtered = loc_filtered
-            logger.info(f"[Filter] location={loc_pref}: {original_count} → {len(filtered)}")
+        filtered = loc_filtered
+        logger.info(f"[Filter] location={loc_pref}: {original_count} → {len(filtered)}")
 
     if _is_tshirt_query():
         include_terms = ["t-shirt", "tshirt", "tee"]
-        exclude_terms = ["hoodie", "sweatshirt", "crewneck", "tank", "long sleeve", "raglan", "polo", "mug", "poster", "tote", "bag", "cap", "hat", "beanie", "jogger", "pant", "short"]
+        exclude_terms = ["kid", "kids", "youth", "baby", "toddler", "infant", "hoodie", "sweatshirt", "crewneck", "tank", "long sleeve", "raglan", "polo", "mug", "poster", "tote", "bag", "cap", "hat", "beanie", "jogger", "pant", "short"]
         tshirt_filtered = []
         for p in filtered:
             name = (p.get("name") or "").lower()
@@ -333,9 +456,8 @@ def _apply_criteria_filters(state: AgentState) -> AgentState:
                 continue
             if any(t in name for t in include_terms):
                 tshirt_filtered.append(p)
-        if tshirt_filtered:
-            filtered = tshirt_filtered
-            logger.info(f"[Filter] type=tshirt: → {len(filtered)}")
+        filtered = tshirt_filtered
+        logger.info(f"[Filter] type=tshirt: → {len(filtered)}")
 
     product_names = [x for x in (criteria.get("product_names") or []) if x]
     if product_names and len(product_names) == 1 and any(x in q for x in ["phân tích", "phan tich", "chi tiết", "chi tiet", "kỹ hơn", "ky hon"]):
@@ -346,9 +468,20 @@ def _apply_criteria_filters(state: AgentState) -> AgentState:
                 if token in (p.get("name", "") or "").lower()
                 or token in (p.get("short_code", "") or "").lower()
             ]
-            if specific:
-                filtered = specific
-                logger.info(f"[Filter] product_name={product_names[0]}: → {len(filtered)}")
+            filtered = specific
+            logger.info(f"[Filter] product_name={product_names[0]}: → {len(filtered)}")
+
+    max_price = criteria.get("max_price", 9999.0) or 9999.0
+    min_price = criteria.get("min_price", 0.0) or 0.0
+    needs_detail = (
+        (max_price < 9999.0)
+        or (min_price > 0.0)
+        or ("xưởng" in q)
+        or ("factory" in q)
+        or ("partner" in q)
+    )
+    if needs_detail:
+        _enrich_candidates_with_offline_details(filtered)
 
     # Filter theo partner
     partner_prefs = [p.strip() for p in (criteria.get("partner_preference") or []) if p]
@@ -361,9 +494,8 @@ def _apply_criteria_filters(state: AgentState) -> AgentState:
                 for partner_name in (p.get("partners") or [])
             )
         ]
-        if partner_filtered:
-            filtered = partner_filtered
-            logger.info(f"[Filter] partners={partner_prefs}: → {len(filtered)}")
+        filtered = partner_filtered
+        logger.info(f"[Filter] partners={partner_prefs}: → {len(filtered)}")
 
     # Filter theo color
     color_prefs = [c.strip().lower() for c in (criteria.get("color_preference") or []) if c]
@@ -380,30 +512,43 @@ def _apply_criteria_filters(state: AgentState) -> AgentState:
                 for col in (p.get("available_colors") or [])
             )
         ]
-        if color_filtered:
-            filtered = color_filtered
-            logger.info(f"[Filter] colors={color_prefs}: → {len(filtered)}")
+        filtered = color_filtered
+        logger.info(f"[Filter] colors={color_prefs}: → {len(filtered)}")
 
     # Filter theo max_price
-    max_price = criteria.get("max_price", 9999.0) or 9999.0
     if max_price < 9999.0:
-        price_filtered = [
-            p for p in filtered
-            if (p.get("price_min") or p.get("base_cost") or 0) <= max_price
-        ]
-        if price_filtered:
-            filtered = price_filtered
-            logger.info(f"[Filter] max_price=${max_price}: → {len(filtered)}")
+        price_filtered = []
+        for p in filtered:
+            raw = p.get("price_min", None)
+            if raw in (None, "", 0, 0.0):
+                raw = p.get("base_cost", None)
+            try:
+                val = float(raw)
+            except Exception:
+                val = None
+            if val is None or val <= 0:
+                continue
+            if val <= float(max_price):
+                price_filtered.append(p)
+        filtered = price_filtered
+        logger.info(f"[Filter] max_price=${max_price}: → {len(filtered)}")
 
     # Filter theo min_price
-    min_price = criteria.get("min_price", 0.0) or 0.0
     if min_price > 0.0:
-        price_filtered = [
-            p for p in filtered
-            if (p.get("price_min") or p.get("base_cost") or 0) >= min_price
-        ]
-        if price_filtered:
-            filtered = price_filtered
+        price_filtered = []
+        for p in filtered:
+            raw = p.get("price_min", None)
+            if raw in (None, "", 0, 0.0):
+                raw = p.get("base_cost", None)
+            try:
+                val = float(raw)
+            except Exception:
+                val = None
+            if val is None or val <= 0:
+                continue
+            if val >= float(min_price):
+                price_filtered.append(p)
+        filtered = price_filtered
 
     # Filter theo print_method
     print_pref = (criteria.get("print_method") or criteria.get("print_tech") or "").strip().upper()
@@ -412,9 +557,8 @@ def _apply_criteria_filters(state: AgentState) -> AgentState:
             p for p in filtered
             if print_pref in (p.get("print_method") or "").upper()
         ]
-        if pm_filtered:
-            filtered = pm_filtered
-            logger.info(f"[Filter] print_method={print_pref}: → {len(filtered)}")
+        filtered = pm_filtered
+        logger.info(f"[Filter] print_method={print_pref}: → {len(filtered)}")
 
     # Filter theo max_lead_time
     max_lead = criteria.get("max_lead_time", 999) or 999
@@ -423,9 +567,8 @@ def _apply_criteria_filters(state: AgentState) -> AgentState:
             p for p in filtered
             if (p.get("processing_min") or 999) <= max_lead
         ]
-        if lead_filtered:
-            filtered = lead_filtered
-            logger.info(f"[Filter] max_lead_time={max_lead}: → {len(filtered)}")
+        filtered = lead_filtered
+        logger.info(f"[Filter] max_lead_time={max_lead}: → {len(filtered)}")
 
     logger.info(f"[Filter] Total: {original_count} → {len(filtered)} candidates after criteria filter")
 
@@ -437,16 +580,15 @@ def _apply_criteria_filters(state: AgentState) -> AgentState:
 
 
 def _loc_match(product_loc: str, pref: str) -> bool:
-    """So sánh location của product với preference"""
     loc = (product_loc or "").upper()
     if pref == "US":
-        return loc in ("US", "USA", "UNITED STATES")
+        return ("US" in loc) or ("UNITED STATES" in loc)
     if pref == "EU":
-        return loc in ("EU", "EUROPE", "POLAND", "GERMANY", "NETHERLANDS", "UK")
+        return any(x in loc for x in ("EU", "EUROPE", "POLAND", "GERMANY", "NETHERLANDS", "UK"))
     if pref == "CHINA":
-        return loc == "CHINA"
+        return "CHINA" in loc
     if pref == "VIETNAM" or pref == "VN":
-        return loc in ("VIETNAM", "VN")
+        return ("VIETNAM" in loc) or (loc == "VN")
     return loc == pref
 
 

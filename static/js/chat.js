@@ -24,6 +24,10 @@ const state = {
 };
 
 // DOM refs
+const chatPanel = document.getElementById('bp-chat-panel');
+const canvasPanel = document.getElementById('bp-canvas-panel');
+const landingSection = document.getElementById('bp-landing');
+const chatScroll = document.getElementById('bp-chat-scroll');
 const messagesContainer = document.getElementById('messages-container');
 const chatInput = document.getElementById('chat-input');
 const sendBtn = document.getElementById('send-btn');
@@ -38,7 +42,6 @@ const statusIndicator = document.getElementById('status-indicator');
 const statusLabel = document.getElementById('status-label');
 const toast = document.getElementById('toast');
 const btnNewChat = document.getElementById('btn-new-chat');
-const sessionDisplay = document.getElementById('session-display');
 const orderModal = document.getElementById('order-modal');
 const partnerColorsModal = document.getElementById('partner-colors-modal');
 const partnerColorsCloseBtn = document.getElementById('partner-colors-close-btn');
@@ -50,7 +53,21 @@ const colorPreviewSwatch = document.getElementById('color-preview-swatch');
 const colorPreviewHex = document.getElementById('color-preview-hex');
 const btnApplyFilter = document.getElementById('btn-apply-filter');
 const btnClearCache = document.getElementById('btn-clear-cache');
-const welcomeTemplate = document.getElementById('welcome-msg')?.outerHTML || '';
+
+const decisionWinnerSubtitle = document.getElementById('bp-winner-subtitle');
+const decisionWinnerBase = document.getElementById('bp-winner-base');
+const decisionWinnerProd = document.getElementById('bp-winner-prod');
+const decisionWinnerQuality = document.getElementById('bp-winner-quality');
+const decisionExportBtn = document.getElementById('bp-export-btn');
+const decisionTableBody = document.getElementById('bp-factory-table-body');
+const decisionInsightsList = document.getElementById('bp-insights-list');
+const decisionRankingCards = document.getElementById('bp-ranking-cards');
+const splitResizer = document.getElementById('bp-resizer');
+const chatInputArea = document.getElementById('bp-input-area');
+const canvasContent = document.getElementById('bp-canvas-content');
+const canvasFooter = document.getElementById('bp-canvas-footer');
+const btnMinimizeChat = document.getElementById('bp-min-chat-btn');
+const btnMinimizeCanvas = document.getElementById('bp-min-canvas-btn');
 
 // ---------------------------------------------------------------------------
 // Init
@@ -63,8 +80,126 @@ document.addEventListener('DOMContentLoaded', async () => {
   autoResizeTextarea();
   await Promise.allSettled([checkAPIStatus(), loadConversationHistory()]);
   updateComposerState();
+  syncLayoutState();
+  applySplitFromStorage();
   chatInput?.focus();
 });
+
+function setActiveLayout(isActive) {
+  const active = Boolean(isActive);
+  if (chatPanel) {
+    chatPanel.classList.toggle('lg:basis-full', !active);
+    chatPanel.classList.toggle('lg:basis-2/5', active);
+  }
+  if (canvasPanel) {
+    canvasPanel.classList.toggle('hidden', !active);
+    canvasPanel.classList.toggle('flex', active);
+  }
+  if (landingSection) landingSection.classList.toggle('hidden', active);
+  if (messagesContainer) messagesContainer.classList.toggle('hidden', !active);
+  if (splitResizer) splitResizer.style.display = active ? '' : 'none';
+
+  if (active) {
+    applySplitFromStorage();
+  } else {
+    clearInlineSplit();
+    setMinimized('none', { persist: false });
+  }
+}
+
+function syncLayoutState() {
+  const hasMessages = Boolean(messagesContainer?.children?.length);
+  setActiveLayout(hasMessages);
+}
+
+function clamp(n, min, max) {
+  return Math.max(min, Math.min(max, n));
+}
+
+function getSplitStorageKey() {
+  return 'bp_split_pct';
+}
+
+function getMinimizeStorageKey() {
+  return 'bp_minimized';
+}
+
+function clearInlineSplit() {
+  if (chatPanel) chatPanel.style.flexBasis = '';
+  if (canvasPanel) canvasPanel.style.flexBasis = '';
+}
+
+function setSplitPercent(pct, { persist = true } = {}) {
+  const p = clamp(Number(pct) || 40, 28, 72);
+  if (!chatPanel || !canvasPanel) return;
+  chatPanel.style.flexBasis = `${p}%`;
+  canvasPanel.style.flexBasis = `${100 - p}%`;
+  if (persist) localStorage.setItem(getSplitStorageKey(), String(p));
+  applyResponsivePanes();
+}
+
+function setMinimized(mode, { persist = true } = {}) {
+  const m = ['none', 'chat', 'canvas'].includes(mode) ? mode : 'none';
+  if (persist) localStorage.setItem(getMinimizeStorageKey(), m);
+
+  if (!chatPanel || !canvasPanel) return;
+
+  if (m === 'chat') {
+    chatPanel.style.display = 'none';
+    canvasPanel.style.display = 'flex';
+    canvasPanel.style.flexBasis = '100%';
+    chatPanel.classList.remove('bp-compact-pane');
+    canvasPanel.classList.remove('bp-compact-pane');
+    productCardsGrid?.classList.remove('bp-compact-grid');
+  } else if (m === 'canvas') {
+    canvasPanel.style.display = 'none';
+    chatPanel.style.display = 'flex';
+    chatPanel.style.flexBasis = '100%';
+    chatPanel.classList.remove('bp-compact-pane');
+    canvasPanel.classList.remove('bp-compact-pane');
+    productCardsGrid?.classList.remove('bp-compact-grid');
+  } else {
+    chatPanel.style.display = '';
+    canvasPanel.style.display = '';
+    const savedPct = Number(localStorage.getItem(getSplitStorageKey()) || 40);
+    setSplitPercent(savedPct, { persist: false });
+  }
+
+  if (btnMinimizeChat) {
+    btnMinimizeChat.innerHTML = m === 'chat'
+      ? '<i class="fa-solid fa-up-right-and-down-left-from-center"></i>'
+      : '<i class="fa-solid fa-window-minimize"></i>';
+  }
+  if (btnMinimizeCanvas) {
+    btnMinimizeCanvas.innerHTML = m === 'canvas'
+      ? '<i class="fa-solid fa-up-right-and-down-left-from-center"></i>'
+      : '<i class="fa-solid fa-window-minimize"></i>';
+  }
+
+  if (splitResizer) splitResizer.style.display = m === 'none' ? '' : 'none';
+}
+
+function applyResponsivePanes() {
+  if (!chatPanel || !canvasPanel) return;
+  try {
+    const chatW = chatPanel.getBoundingClientRect().width;
+    const canvasW = canvasPanel.getBoundingClientRect().width;
+    const chatCompact = chatW > 0 && chatW < 520;
+    const canvasCompact = canvasW > 0 && canvasW < 980;
+    chatPanel.classList.toggle('bp-compact-pane', chatCompact);
+    canvasPanel.classList.toggle('bp-compact-pane', canvasCompact);
+    productCardsGrid?.classList.toggle('bp-compact-grid', chatCompact);
+  } catch {
+  }
+}
+
+function applySplitFromStorage() {
+  if (!chatPanel || !canvasPanel) return;
+  const savedMin = localStorage.getItem(getMinimizeStorageKey()) || 'none';
+  const savedPct = Number(localStorage.getItem(getSplitStorageKey()) || 40);
+  setMinimized(savedMin, { persist: false });
+  if (savedMin === 'none') setSplitPercent(savedPct, { persist: false });
+}
 
 // ---------------------------------------------------------------------------
 // Event Listeners
@@ -121,15 +256,55 @@ function setupEventListeners() {
     state.sessionId = crypto.randomUUID();
     state.allProducts = [];
     state.lastQuery = '';
-    if (sessionDisplay) {
-      sessionDisplay.textContent = `${state.sessionId.substring(0, 12)}...`;
-    }
     clearDraft();
     clearChat();
     updateComposerState();
     chatInput?.focus();
     showToast('Đã tạo session mới', 'info');
   });
+
+  btnMinimizeChat?.addEventListener('click', () => {
+    const current = localStorage.getItem(getMinimizeStorageKey()) || 'none';
+    setMinimized(current !== 'none' ? 'none' : 'chat');
+  });
+
+  btnMinimizeCanvas?.addEventListener('click', () => {
+    const current = localStorage.getItem(getMinimizeStorageKey()) || 'none';
+    setMinimized(current !== 'none' ? 'none' : 'canvas');
+  });
+
+  if (splitResizer) {
+    splitResizer.addEventListener('pointerdown', (e) => {
+      const minimized = localStorage.getItem(getMinimizeStorageKey()) || 'none';
+      if (minimized !== 'none') return;
+      if (!chatPanel || !canvasPanel) return;
+      const shell = splitResizer.parentElement;
+      if (!shell) return;
+
+      const startX = e.clientX;
+      const rect = shell.getBoundingClientRect();
+      const startPct = Number(localStorage.getItem(getSplitStorageKey()) || 40);
+
+      splitResizer.setPointerCapture(e.pointerId);
+      document.body.style.userSelect = 'none';
+      document.body.style.cursor = 'col-resize';
+
+      const onMove = (ev) => {
+        const dx = ev.clientX - startX;
+        const pctDelta = (dx / rect.width) * 100;
+        setSplitPercent(startPct + pctDelta);
+      };
+
+      const onUp = () => {
+        document.body.style.userSelect = '';
+        document.body.style.cursor = '';
+        window.removeEventListener('pointermove', onMove);
+      };
+
+      window.addEventListener('pointermove', onMove);
+      window.addEventListener('pointerup', onUp, { once: true });
+    });
+  }
 
   // Cache clear
   btnClearCache?.addEventListener('click', async () => {
@@ -355,6 +530,7 @@ async function loadConversationHistory() {
     if (!messages.length) return;
 
     messagesContainer.innerHTML = '';
+    let lastAssistantPayload = null;
     messages.forEach((message) => {
       if (message.role === 'user') {
         appendUserMessage(message.content, {
@@ -391,8 +567,11 @@ async function loadConversationHistory() {
         timeLabel: formatHistoryTime(message.created_at),
         fromHistory: true,
       });
+      lastAssistantPayload = payload;
     });
 
+    setActiveLayout(true);
+    renderDecisionCanvas({ products: lastAssistantPayload?.products || [] });
     scrollToBottom(false);
   } catch (err) {
     console.error('History load error:', err);
@@ -408,7 +587,7 @@ async function handleSend(forcedQuery = '') {
   if (!query || state.isLoading) return;
 
   state.lastQuery = query;
-  hideWelcomeMessage();
+  setActiveLayout(true);
   appendUserMessage(query);
   clearDraft();
   updateComposerAfterSend();
@@ -450,6 +629,7 @@ async function handleSend(forcedQuery = '') {
       hideProductCards();
     }
 
+    renderDecisionCanvas(data);
     appendAssistantMessage(data.response || 'Xin lỗi, tôi chưa tạo được câu trả lời phù hợp.', {
       intent: data.intent || '',
       products: data.products || [],
@@ -498,15 +678,12 @@ function appendUserMessage(text, options = {}) {
   const time = options.timeLabel || getCurrentTime();
   const animation = options.skipAnimation ? '' : 'style="animation: fadeInUp 0.3s ease"';
   const html = `
-    <div class="message-group user-group" ${animation}>
-      <div class="avatar">👤</div>
-      <div class="message-content">
-        <div class="message-bubble user-bubble">
-          <p>${escapeHtml(text)}</p>
+    <div class="flex justify-end" ${animation}>
+      <div class="max-w-[92%] sm:max-w-[80%]">
+        <div class="rounded-2xl rounded-tr-sm bg-brandBlue text-white px-4 py-3 shadow-sm">
+          <div class="text-sm leading-relaxed">${escapeHtml(text)}</div>
         </div>
-        <div class="message-footer-row user-footer-row">
-          <span class="message-time">${time}</span>
-        </div>
+        <div class="mt-1 text-[11px] text-ink/50 text-right">${time}</div>
       </div>
     </div>
   `;
@@ -517,34 +694,51 @@ function appendUserMessage(text, options = {}) {
 function appendAssistantMessage(text, options = {}) {
   const time = options.timeLabel || getCurrentTime();
   const formattedText = formatMarkdown(text);
-  const intentBadge = options.intent
-    ? `<span class="intent-badge">${escapeHtml(getIntentLabel(options.intent))}</span>`
-    : '';
+  const intentBadge = options.intent ? `
+    <span class="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-appBg text-ink/70 text-xs font-semibold border border-black/5">
+      ${escapeHtml(getIntentLabel(options.intent))}
+    </span>
+  ` : '';
   const copyPayload = encodeURIComponent(text || '');
   const animation = options.skipAnimation ? '' : 'style="animation: fadeInUp 0.3s ease"';
-  const historyPill = options.fromHistory ? '<span class="meta-pill">📜 Lịch sử</span>' : '';
+  const historyPill = options.fromHistory ? `
+    <span class="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-white text-ink/60 text-xs font-semibold border border-black/10">
+      <i class="fa-solid fa-clock-rotate-left text-ink/40"></i> Lịch sử
+    </span>
+  ` : '';
 
   const html = `
-    <div class="message-group assistant-group" ${animation}>
-      <div class="avatar">🍔</div>
-      <div class="message-content">
-        <div class="assistant-meta-row">
-          <div class="assistant-meta-left">
-            ${intentBadge}
-            ${historyPill}
+    <div class="flex justify-start" ${animation}>
+      <div class="max-w-[96%] sm:max-w-[86%]">
+        <div class="flex items-start gap-3">
+          <div class="h-9 w-9 rounded-xl bg-white border border-black/10 shadow-sm flex items-center justify-center shrink-0">
+            <i class="fa-solid fa-robot text-ink/70"></i>
           </div>
-          <div class="assistant-meta-actions">
-            <button class="icon-btn" data-action="copy" data-copy="${copyPayload}" title="Sao chép">📋 Copy</button>
-            ${options.intent === 'recommend_product' || options.intent === 'compare_product' ?
-              `<button class="icon-btn" data-action="order" title="Tạo đơn hàng">📦 Tạo đơn</button>` : ''}
+          <div class="rounded-2xl rounded-tl-sm bg-white border border-black/5 px-4 py-3 shadow-sm w-full">
+            <div class="flex items-center justify-between gap-3 flex-wrap">
+              <div class="flex items-center gap-2 flex-wrap">
+                ${intentBadge}
+                ${historyPill}
+              </div>
+              <div class="flex items-center gap-2">
+                <button class="inline-flex items-center gap-2 px-3 py-2 rounded-xl bg-white border border-black/10 text-xs font-semibold hover:bg-appBg transition" data-action="copy" data-copy="${copyPayload}" title="Sao chép">
+                  <i class="fa-solid fa-copy text-ink/60"></i> Copy
+                </button>
+                ${options.intent === 'recommend_product' || options.intent === 'compare_product' ?
+                  `<button class="inline-flex items-center gap-2 px-3 py-2 rounded-xl bg-white border border-black/10 text-xs font-semibold hover:bg-appBg transition" data-action="order" title="Tạo đơn hàng">
+                    <i class="fa-solid fa-box text-ink/60"></i> Tạo đơn
+                  </button>` : ''}
+              </div>
+            </div>
+
+            <div class="mt-3 text-sm leading-relaxed text-ink/80 md-content">
+              ${formattedText}
+            </div>
+
+            ${buildAssistantExtras(options)}
+
+            <div class="mt-2 text-[11px] text-ink/50">${time}</div>
           </div>
-        </div>
-        <div class="message-bubble assistant-bubble md-content">
-          ${formattedText}
-        </div>
-        ${buildAssistantExtras(options)}
-        <div class="message-footer-row">
-          <span class="message-time">${time}</span>
         </div>
       </div>
     </div>
@@ -562,12 +756,12 @@ function buildAssistantExtras(options = {}) {
   // Winner card - nâng cấp với thêm thông tin
   const winnerHtml = winner?.name
     ? `
-      <div class="assistant-result-card">
-        <div class="result-card-label">🏆 Kết quả tốt nhất</div>
-        <div class="result-card-title">${escapeHtml(winner.name)}</div>
-        <div class="result-card-sub">${escapeHtml(winner.short_code || '')}</div>
-        <div class="result-card-badges" style="margin-top:6px">${buildBadges(winner)}</div>
-        ${winner.suggested_selling_price ? `<div style="margin-top:6px;font-size:12px;color:var(--text-secondary)">💰 Giá bán đề xuất: <strong>$${Number(winner.suggested_selling_price).toFixed(2)}</strong> | Lợi nhuận: <strong>$${Number(winner.profit || 0).toFixed(2)}</strong></div>` : ''}
+      <div class="mt-4 rounded-2xl bg-white border border-black/10 shadow-sm p-4">
+        <div class="text-xs font-bold text-ink/60">🏆 Kết quả tốt nhất</div>
+        <div class="mt-1 text-sm font-extrabold">${escapeHtml(winner.name)}</div>
+        <div class="mt-0.5 text-xs text-ink/60 font-mono">${escapeHtml(winner.short_code || '')}</div>
+        <div class="mt-2 flex flex-wrap gap-2">${buildBadges(winner)}</div>
+        ${winner.suggested_selling_price ? `<div class="mt-2 text-xs text-ink/60">💰 Giá bán đề xuất: <span class="font-semibold">$${Number(winner.suggested_selling_price).toFixed(2)}</span> | Lợi nhuận: <span class="font-semibold">$${Number(winner.profit || 0).toFixed(2)}</span></div>` : ''}
       </div>
     `
     : '';
@@ -575,8 +769,11 @@ function buildAssistantExtras(options = {}) {
   // Reasons
   const reasonHtml = reasons.length
     ? `
-      <div class="reason-list">
-        ${reasons.map((reason) => `<div class="reason-item">${formatMarkdown(reason)}</div>`).join('')}
+      <div class="mt-4 rounded-2xl bg-appBg/60 border border-black/5 p-4">
+        <div class="text-xs font-bold text-ink/60">✅ Lý do gợi ý</div>
+        <div class="mt-2 space-y-2 text-sm text-ink/75">
+          ${reasons.map((reason) => `<div class="rounded-xl bg-white border border-black/10 p-3">${formatMarkdown(reason)}</div>`).join('')}
+        </div>
       </div>
     `
     : '';
@@ -584,7 +781,7 @@ function buildAssistantExtras(options = {}) {
   // Inline product strip
   const productsHtml = products.length
     ? `
-      <div class="inline-product-strip">
+      <div class="mt-4 grid grid-cols-1 sm:grid-cols-3 gap-3">
         ${products.map((product, index) => buildInlineProductCard(product, index + 1)).join('')}
       </div>
     `
@@ -593,9 +790,9 @@ function buildAssistantExtras(options = {}) {
   // Follow-up chips
   const followUpHtml = followUps.length
     ? `
-      <div class="follow-up-row">
+      <div class="mt-4 flex flex-wrap gap-2">
         ${followUps.map((prompt) => `
-          <button class="follow-up-chip" data-action="prompt" data-prompt="${encodeURIComponent(prompt)}">
+          <button class="px-3 py-2 rounded-xl bg-white border border-black/10 text-xs font-semibold hover:bg-appBg transition" data-action="prompt" data-prompt="${encodeURIComponent(prompt)}">
             ${escapeHtml(prompt)}
           </button>
         `).join('')}
@@ -605,9 +802,9 @@ function buildAssistantExtras(options = {}) {
 
   // Error: retry chip
   const retryHtml = options.error ? `
-    <div class="follow-up-row">
-      <button class="follow-up-chip error-chip" data-action="retry" data-prompt="${encodeURIComponent(state.lastQuery || '')}">
-        🔄 Gửi lại
+    <div class="mt-4">
+      <button class="px-3 py-2 rounded-xl bg-brandOrange/10 text-brandOrange border border-brandOrange/20 text-xs font-semibold hover:bg-brandOrange/15 transition" data-action="retry" data-prompt="${encodeURIComponent(state.lastQuery || '')}">
+        <i class="fa-solid fa-rotate-right mr-2"></i> Gửi lại
       </button>
     </div>
   ` : '';
@@ -619,8 +816,8 @@ function buildAssistantExtras(options = {}) {
       ${winnerHtml}
       ${reasonHtml}
       ${productsHtml}
-      ${retryHtml}
       ${followUpHtml}
+      ${retryHtml}
     </div>
   `;
 }
@@ -628,24 +825,29 @@ function buildAssistantExtras(options = {}) {
 function buildInlineProductCard(product, rank) {
   const prompt = `Phân tích chi tiết ${product.name || product.short_code || 'sản phẩm này'}`;
   const thumbnail = product.thumbnail
-    ? `<img class="mini-thumb" src="${escapeHtml(product.thumbnail)}" alt="${escapeHtml(product.name || '')}" onerror="this.style.display='none'">`
-    : '';
+    ? `<img class="h-12 w-12 rounded-xl object-cover border border-black/10" src="${escapeHtml(product.thumbnail)}" alt="${escapeHtml(product.name || '')}" onerror="this.style.display='none'">`
+    : `<div class="h-12 w-12 rounded-xl bg-appBg border border-black/10 flex items-center justify-center text-ink/50"><i class="fa-solid fa-shirt"></i></div>`;
   const priceInfo = product.price_min && product.price_max
-    ? `<div class="mini-price">${product.price_min === product.price_max ? `$${product.price_min.toFixed(2)}` : `$${product.price_min.toFixed(2)}–$${product.price_max.toFixed(2)}`}</div>`
+    ? `<div class="text-[11px] text-ink/60 mt-1">Base: <span class="font-semibold text-ink">${product.price_min === product.price_max ? `$${product.price_min.toFixed(2)}` : `$${product.price_min.toFixed(2)}–$${product.price_max.toFixed(2)}`}</span></div>`
     : '';
   return `
-    <div class="mini-product-card">
-      ${thumbnail}
-      <div class="mini-product-top">
-        <span class="mini-rank">#${rank}</span>
-        <span class="mini-score">${Math.round(product.score || 0)}/100</span>
+    <div class="rounded-xl border border-black/10 bg-white p-3 hover:shadow-sm transition">
+      <div class="flex items-start justify-between gap-2">
+        <div class="flex items-start gap-3 min-w-0">
+          ${thumbnail}
+          <div class="min-w-0">
+            <div class="text-xs font-bold tracking-tight truncate">${escapeHtml(product.name || 'N/A')}</div>
+            <div class="text-[11px] text-ink/60 font-mono mt-0.5">${escapeHtml(product.short_code || product.id || '')}</div>
+            ${priceInfo}
+            <div class="mt-2 flex flex-wrap gap-2">${buildBadges(product)}</div>
+            ${buildPartnersInfo(product)}
+          </div>
+        </div>
+        <span class="shrink-0 inline-flex items-center gap-1 px-2 py-1 rounded-full bg-appBg text-ink/70 text-[11px] font-semibold border border-black/10">
+          <i class="fa-solid fa-gauge-high text-brandBlue"></i> ${Math.round(product.score || 0)}/100
+        </span>
       </div>
-      <div class="mini-name">${escapeHtml(product.name || 'N/A')}</div>
-      <div class="mini-sku">${escapeHtml(product.short_code || product.id || '')}</div>
-      ${priceInfo}
-      <div class="mini-badges">${buildBadges(product)}</div>
-      <div class="mini-partners">${buildPartnersInfo(product)}</div>
-      <button class="mini-action" data-action="prompt" data-prompt="${encodeURIComponent(prompt)}">
+      <button class="mt-3 w-full h-10 rounded-xl bg-white border border-black/10 text-xs font-semibold hover:bg-appBg transition" data-action="prompt" data-prompt="${encodeURIComponent(prompt)}">
         Xem chi tiết →
       </button>
     </div>
@@ -657,7 +859,7 @@ function buildPartnersInfo(product) {
   if (!partners.length) return '';
   const displayed = partners.slice(0, 2).map(p => escapeHtml(p)).join(', ');
   const more = partners.length > 2 ? ` (+${partners.length - 2})` : '';
-  return `<div class="mini-partners-text">🏭 ${displayed}${more}</div>`;
+  return `<div class="text-[11px] text-ink/60 mt-1"><i class="fa-solid fa-industry text-brandOrange mr-1"></i> ${displayed}${more}</div>`;
 }
 
 // ---------------------------------------------------------------------------
@@ -666,18 +868,21 @@ function buildPartnersInfo(product) {
 
 function showTypingIndicator(loadingNote = '') {
   const id = `typing-${Date.now()}`;
-  const noteHtml = loadingNote ? `<div class="typing-note">${escapeHtml(loadingNote)}</div>` : '';
+  const noteHtml = loadingNote ? `<div class="mt-2 text-xs text-ink/50">${escapeHtml(loadingNote)}</div>` : '';
   const html = `
-    <div class="message-group assistant-group" id="${id}" style="animation: fadeInUp 0.3s ease">
-      <div class="avatar">🍔</div>
-      <div class="message-content">
-        <div class="typing-bubble">
-          <div class="typing-indicator">
-            <div class="typing-dot"></div>
-            <div class="typing-dot"></div>
-            <div class="typing-dot"></div>
+    <div class="flex justify-start" id="${id}" style="animation: fadeInUp 0.3s ease">
+      <div class="max-w-[96%] sm:max-w-[86%]">
+        <div class="flex items-start gap-3">
+          <div class="h-9 w-9 rounded-xl bg-white border border-black/10 shadow-sm flex items-center justify-center shrink-0">
+            <i class="fa-solid fa-robot text-ink/70"></i>
           </div>
-          ${noteHtml}
+          <div class="rounded-2xl rounded-tl-sm bg-white border border-black/5 px-4 py-3 shadow-sm">
+            <div class="text-sm text-ink/60 flex items-center gap-2">
+              <span class="h-2 w-2 rounded-full bg-brandOrange animate-pulse"></span>
+              Thinking…
+            </div>
+            ${noteHtml}
+          </div>
         </div>
       </div>
     </div>
@@ -701,7 +906,7 @@ function showProductCards(products, intent) {
     return;
   }
 
-  productCardsArea.style.display = 'block';
+  productCardsArea?.classList.remove('hidden');
   const titleMap = {
     recommend_product: '🏆 Sản phẩm gợi ý',
     compare_product: '⚖️ Sản phẩm so sánh',
@@ -722,13 +927,13 @@ function showProductCards(products, intent) {
 }
 
 function hideProductCards() {
-  if (productCardsArea) productCardsArea.style.display = 'none';
+  productCardsArea?.classList.add('hidden');
   if (productCardsGrid) productCardsGrid.innerHTML = '';
 }
 
 function applyProductSuggestionsVisibility() {
   const show = Boolean(state.ui.showProductSuggestions);
-  if (productCardsGrid) productCardsGrid.style.display = show ? 'flex' : 'none';
+  if (productCardsGrid) productCardsGrid.style.display = show ? 'grid' : 'none';
   if (btnToggleProducts) {
     btnToggleProducts.textContent = show ? 'Ẩn gợi ý' : 'Hiện gợi ý';
     btnToggleProducts.classList.toggle('active', !show);
@@ -865,38 +1070,53 @@ function closeColorPreview() {
 function buildProductCard(product, rank) {
   const scorePercent = Math.round(product.score || 0);
   const thumbnail = product.thumbnail
-    ? `<img class="card-thumb" src="${escapeHtml(product.thumbnail)}" alt="${escapeHtml(product.name || '')}" onerror="this.style.display='none'">`
-    : `<div class="card-thumb-placeholder">🛍️</div>`;
+    ? `<img class="h-12 w-12 rounded-xl object-cover border border-black/10" src="${escapeHtml(product.thumbnail)}" alt="${escapeHtml(product.name || '')}" onerror="this.style.display='none'">`
+    : `<div class="h-12 w-12 rounded-xl bg-appBg border border-black/10 flex items-center justify-center text-ink/50"><i class="fa-solid fa-shirt"></i></div>`;
   const priceInfo = product.price_min
-    ? `<div class="card-price">${product.price_min === product.price_max ? `$${Number(product.price_min).toFixed(2)}` : `$${Number(product.price_min).toFixed(2)}–$${Number(product.price_max).toFixed(2)}`}</div>`
+    ? `<div class="text-xs text-ink/60 mt-1">Base: <span class="font-semibold text-ink">${product.price_min === product.price_max ? `$${Number(product.price_min).toFixed(2)}` : `$${Number(product.price_min).toFixed(2)}–$${Number(product.price_max).toFixed(2)}`}</span></div>`
     : '';
   const profitInfo = product.profit
-    ? `<div class="card-profit">💰 Lợi nhuận: $${Number(product.profit).toFixed(2)}/đơn</div>`
+    ? `<div class="text-xs text-ink/60 mt-1">Profit/order: <span class="font-semibold text-emerald-600">$${Number(product.profit).toFixed(2)}</span></div>`
     : '';
 
   const productId = product.id || product.short_code || '';
   const partners = Array.isArray(product.partners) ? product.partners.filter(Boolean) : [];
   const partnerText = partners.length ? partners.slice(0, 3).map(p => escapeHtml(p)).join(', ') : '';
   const morePartners = partners.length > 3 ? ` (+${partners.length - 3})` : '';
-  const partnersHtml = partners.length ? `<div class="card-partners">🏭 ${partnerText}${morePartners}</div>` : '';
+  const partnersHtml = partners.length ? `<div class="text-xs text-ink/60 mt-1"><i class="fa-solid fa-industry text-brandOrange mr-1"></i> ${partnerText}${morePartners}</div>` : '';
 
   return `
-    <div class="product-card" data-product-id="${escapeHtml(productId)}">
-      <div class="card-rank">${rank}</div>
-      ${thumbnail}
-      <div class="card-name" title="${escapeHtml(product.name || '')}">${escapeHtml(product.name || 'N/A')}</div>
-      <div class="card-sku">${escapeHtml(product.short_code || product.id || '')}</div>
-      ${priceInfo}
-      ${profitInfo}
-      <div class="card-badges">${buildBadges(product)}</div>
-      ${partnersHtml}
-      <div class="card-actions">
-        <button class="card-action-btn" type="button" data-card-action="toggle-partner-colors" data-product-id="${escapeHtml(productId)}">🎨 Màu theo partner</button>
+    <div class="rounded-2xl border border-black/10 bg-white p-4 hover:shadow-sm transition cursor-pointer" data-product-id="${escapeHtml(productId)}">
+      <div class="flex items-start justify-between gap-3">
+        <div class="flex items-start gap-3 min-w-0">
+          ${thumbnail}
+          <div class="min-w-0">
+            <div class="text-xs font-bold text-ink/60">#${rank}</div>
+            <div class="text-sm font-extrabold leading-tight truncate" title="${escapeHtml(product.name || '')}">${escapeHtml(product.name || 'N/A')}</div>
+            <div class="text-xs text-ink/60 font-mono mt-0.5">${escapeHtml(product.short_code || product.id || '')}</div>
+            ${priceInfo}
+            ${profitInfo}
+            ${partnersHtml}
+          </div>
+        </div>
+        <div class="shrink-0 inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-appBg text-ink/70 text-xs font-semibold border border-black/5">
+          <i class="fa-solid fa-gauge-high text-brandBlue"></i> ${scorePercent}/100
+        </div>
       </div>
-      <div class="card-score-bar">
-        <div class="card-score-fill" style="width: ${scorePercent}%"></div>
+
+      <div class="mt-3 flex flex-wrap gap-2">
+        ${buildBadges(product)}
       </div>
-      <div class="card-score-label">Score: ${scorePercent}/100</div>
+
+      <div class="mt-4 flex items-center gap-2">
+        <button class="px-3 py-2 rounded-xl bg-white border border-black/10 text-xs font-semibold hover:bg-appBg transition" type="button" data-card-action="toggle-partner-colors" data-product-id="${escapeHtml(productId)}">
+          <i class="fa-solid fa-palette text-brandOrange mr-2"></i> Màu theo partner
+        </button>
+      </div>
+
+      <div class="mt-3 h-2 rounded-full bg-appBg border border-black/5 overflow-hidden">
+        <div class="h-full bg-brandBlue" style="width:${scorePercent}%"></div>
+      </div>
     </div>
   `;
 }
@@ -904,27 +1124,28 @@ function buildProductCard(product, rank) {
 function buildBadges(product) {
   const badges = [];
   const loc = (product.location || '').toUpperCase();
-  if (loc === 'US' || loc === 'USA') badges.push('<span class="badge badge-us">🇺🇸 US</span>');
-  else if (['EU', 'POLAND', 'GERMANY', 'NETHERLANDS', 'UK'].includes(loc)) badges.push('<span class="badge badge-eu">🇪🇺 EU</span>');
-  else if (loc === 'CHINA') badges.push('<span class="badge badge-china">🇨🇳 China</span>');
-  else if (loc === 'VIETNAM') badges.push('<span class="badge badge-default">🇻🇳 VN</span>');
-  else if (loc && loc !== 'UNKNOWN') badges.push(`<span class="badge badge-default">${escapeHtml(loc)}</span>`);
+  if (loc === 'US' || loc === 'USA') badges.push('<span class="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-brandBlue/10 text-brandBlue text-xs font-semibold border border-brandBlue/20">🇺🇸 US</span>');
+  else if (['EU', 'POLAND', 'GERMANY', 'NETHERLANDS', 'UK'].includes(loc)) badges.push('<span class="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-violet-500/10 text-violet-700 text-xs font-semibold border border-violet-500/20">🇪🇺 EU</span>');
+  else if (loc === 'CHINA') badges.push('<span class="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-red-500/10 text-red-700 text-xs font-semibold border border-red-500/20">🇨🇳 China</span>');
+  else if (loc === 'VIETNAM') badges.push('<span class="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-emerald-500/10 text-emerald-700 text-xs font-semibold border border-emerald-500/20">🇻🇳 VN</span>');
+  else if (loc && loc !== 'UNKNOWN') badges.push(`<span class="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-appBg text-ink/70 text-xs font-semibold border border-black/5">${escapeHtml(loc)}</span>`);
 
   const pm = (product.print_method || '').toUpperCase();
-  if (pm.includes('DTG')) badges.push('<span class="badge badge-dtg">DTG</span>');
-  else if (pm.includes('SUBLIMATION') || pm.includes('SUB')) badges.push('<span class="badge badge-sub">Sub</span>');
-  else if (pm.includes('AOP')) badges.push('<span class="badge badge-aop">AOP</span>');
-  else if (pm.includes('EMBROIDERY')) badges.push('<span class="badge badge-default">Thêu</span>');
-  else if (pm && pm !== 'UNKNOWN') badges.push(`<span class="badge badge-default">${escapeHtml(pm)}</span>`);
+  if (pm.includes('DTG')) badges.push('<span class="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-emerald-500/10 text-emerald-700 text-xs font-semibold border border-emerald-500/20">DTG</span>');
+  else if (pm.includes('DTF')) badges.push('<span class="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-emerald-500/10 text-emerald-700 text-xs font-semibold border border-emerald-500/20">DTF</span>');
+  else if (pm.includes('SUBLIMATION') || pm.includes('SUB')) badges.push('<span class="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-amber-500/10 text-amber-700 text-xs font-semibold border border-amber-500/20">Sub</span>');
+  else if (pm.includes('AOP')) badges.push('<span class="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-pink-500/10 text-pink-700 text-xs font-semibold border border-pink-500/20">AOP</span>');
+  else if (pm.includes('EMBROIDERY')) badges.push('<span class="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-appBg text-ink/70 text-xs font-semibold border border-black/5">Thêu</span>');
+  else if (pm && pm !== 'UNKNOWN') badges.push(`<span class="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-appBg text-ink/70 text-xs font-semibold border border-black/5">${escapeHtml(pm)}</span>`);
 
   const procMin = product.processing_min || 999;
-  if (procMin <= 5) badges.push('<span class="badge badge-fast">⚡ 1-5d</span>');
-  else if (procMin <= 10) badges.push('<span class="badge badge-sub">🔵 ≤10d</span>');
-  else if (procMin < 999) badges.push('<span class="badge badge-slow">🔴 10+d</span>');
+  if (procMin <= 5) badges.push('<span class="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-brandOrange/10 text-brandOrange text-xs font-semibold border border-brandOrange/20">⚡ 1-5d</span>');
+  else if (procMin <= 10) badges.push('<span class="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-brandBlue/10 text-brandBlue text-xs font-semibold border border-brandBlue/20">≤10d</span>');
+  else if (procMin < 999) badges.push('<span class="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-appBg text-ink/70 text-xs font-semibold border border-black/5">10+d</span>');
 
   const inv = (product.inventory_status || '').toLowerCase();
-  if (inv === 'available') badges.push('<span class="badge badge-inventory-available">✅ In stock</span>');
-  else if (inv === 'out_of_stock') badges.push('<span class="badge badge-inventory-oos">❌ Out</span>');
+  if (inv === 'available') badges.push('<span class="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-emerald-500/10 text-emerald-700 text-xs font-semibold border border-emerald-500/20">✅ In stock</span>');
+  else if (inv === 'out_of_stock') badges.push('<span class="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-red-500/10 text-red-700 text-xs font-semibold border border-red-500/20">❌ Out</span>');
 
   return badges.join('');
 }
@@ -1156,7 +1377,14 @@ async function checkAPIStatus() {
 }
 
 function setStatus(statusClass, label) {
-  if (statusIndicator) statusIndicator.className = `status-dot ${statusClass}`;
+  if (statusIndicator) {
+    const color =
+      statusClass === 'online' ? 'bg-emerald-500' :
+      statusClass === 'warning' ? 'bg-amber-500' :
+      statusClass === 'error' ? 'bg-red-500' :
+      'bg-ink/30';
+    statusIndicator.className = `h-2 w-2 rounded-full ${color}`;
+  }
   if (statusLabel) statusLabel.textContent = label;
 }
 
@@ -1306,14 +1534,11 @@ function escapeJs(str) {
   return String(str || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'");
 }
 
-function hideWelcomeMessage() {
-  document.getElementById('welcome-msg')?.remove();
-}
-
 function scrollToBottom(smooth = true) {
-  if (!messagesContainer) return;
-  messagesContainer.scrollTo({
-    top: messagesContainer.scrollHeight,
+  const target = chatScroll || messagesContainer;
+  if (!target) return;
+  target.scrollTo({
+    top: target.scrollHeight,
     behavior: smooth ? 'smooth' : 'auto',
   });
 }
@@ -1355,6 +1580,213 @@ function showToast(message, type = 'info') {
 
 function clearChat() {
   if (!messagesContainer) return;
-  messagesContainer.innerHTML = welcomeTemplate;
+  messagesContainer.innerHTML = '';
   hideProductCards();
+  setActiveLayout(false);
+}
+
+function safeNumber(value) {
+  const n = Number(value);
+  return Number.isFinite(n) ? n : null;
+}
+
+function parseProcessingMin(product) {
+  const explicit = safeNumber(product?.processing_min);
+  if (explicit !== null) return explicit;
+  const s = String(product?.processing_time || '');
+  const range = s.match(/(\d+)\s*-\s*(\d+)/);
+  if (range) return Number(range[1]);
+  const single = s.match(/(\d+)/);
+  if (single) return Number(single[1]);
+  return null;
+}
+
+function deriveFactoriesFromProducts(products) {
+  const byName = new Map();
+  (products || []).forEach((p) => {
+    const partners = Array.isArray(p?.partners) ? p.partners : [];
+    partners.forEach((name) => {
+      const key = String(name || '').trim();
+      if (!key) return;
+
+      const prev = byName.get(key) || {
+        name: key,
+        minBase: Infinity,
+        avgScoreSum: 0,
+        avgScoreCount: 0,
+        processingMin: Infinity,
+        processingLabel: null,
+        locations: new Set(),
+      };
+
+      const priceMin = safeNumber(p?.price_min);
+      if (priceMin !== null) prev.minBase = Math.min(prev.minBase, priceMin);
+
+      const score = safeNumber(p?.score);
+      if (score !== null) {
+        prev.avgScoreSum += score;
+        prev.avgScoreCount += 1;
+      }
+
+      const pm = parseProcessingMin(p);
+      if (pm !== null && pm < prev.processingMin) {
+        prev.processingMin = pm;
+        prev.processingLabel = p?.processing_time || `${pm}d`;
+      }
+
+      const loc = String(p?.location || '').trim();
+      if (loc) prev.locations.add(loc);
+
+      byName.set(key, prev);
+    });
+  });
+
+  const list = Array.from(byName.values()).map((f) => {
+    const avg = f.avgScoreCount ? f.avgScoreSum / f.avgScoreCount : null;
+    return {
+      name: f.name,
+      location: f.locations.size ? Array.from(f.locations).join(', ') : '—',
+      baseCostValue: f.minBase !== Infinity ? f.minBase : null,
+      baseCost: f.minBase !== Infinity ? `$${f.minBase.toFixed(2)}` : '—',
+      productionTimeValue: f.processingMin !== Infinity ? f.processingMin : null,
+      productionTime: f.processingLabel || '—',
+      shippingTime: '—',
+      qualityScoreValue: avg !== null ? avg : null,
+      qualityScore: avg !== null ? `${Math.round(avg)} / 100` : '—',
+      capacity: '—',
+      avgScore: avg !== null ? avg : 0,
+    };
+  });
+
+  list.sort((a, b) => {
+    if (b.avgScore !== a.avgScore) return b.avgScore - a.avgScore;
+    if ((a.baseCostValue ?? Infinity) !== (b.baseCostValue ?? Infinity)) return (a.baseCostValue ?? Infinity) - (b.baseCostValue ?? Infinity);
+    return String(a.name).localeCompare(String(b.name));
+  });
+
+  return list.slice(0, 12);
+}
+
+function renderDecisionCanvas(payload) {
+  if (!decisionTableBody || !decisionWinnerSubtitle || !decisionWinnerBase || !decisionWinnerProd || !decisionWinnerQuality || !decisionInsightsList || !decisionRankingCards) {
+    return;
+  }
+
+  const products = Array.isArray(payload?.products) ? payload.products : [];
+  const factories = deriveFactoriesFromProducts(products);
+  const winner = factories[0] || null;
+
+  if (winner) {
+    decisionWinnerSubtitle.textContent = `${winner.name} — best overall trade-off (derived).`;
+    decisionWinnerBase.textContent = winner.baseCost;
+    decisionWinnerProd.textContent = winner.productionTime;
+    decisionWinnerQuality.textContent = winner.qualityScore;
+    if (decisionExportBtn) decisionExportBtn.disabled = false;
+  } else {
+    decisionWinnerSubtitle.textContent = 'Gửi một câu hỏi để hiển thị kết quả.';
+    decisionWinnerBase.textContent = '—';
+    decisionWinnerProd.textContent = '—';
+    decisionWinnerQuality.textContent = '—';
+    if (decisionExportBtn) decisionExportBtn.disabled = true;
+  }
+
+  decisionTableBody.innerHTML = '';
+  factories.forEach((f, idx) => {
+    const isWinner = idx === 0;
+    const tr = document.createElement('tr');
+    tr.className = isWinner ? 'bg-brandOrange/10 hover:bg-brandOrange/15 transition' : 'bg-white hover:bg-appBg/40 transition';
+    tr.innerHTML = `
+      <td class="py-3 px-3 border-b ${isWinner ? 'border-brandOrange/20' : 'border-black/5'}">
+        <div class="flex items-center gap-2">
+          <div class="font-${isWinner ? 'extrabold' : 'bold'}">${escapeHtml(f.name)}</div>
+          ${isWinner ? `<span class="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-brandOrange text-white text-[11px] font-bold"><i class="fa-solid fa-trophy"></i> Winner</span>` : ''}
+        </div>
+        <div class="text-xs ${isWinner ? 'text-ink/70' : 'text-ink/60'}">${escapeHtml(f.location)}</div>
+      </td>
+      <td class="py-3 px-3 border-b ${isWinner ? 'border-brandOrange/20 font-extrabold' : 'border-black/5'}">${escapeHtml(f.baseCost)}</td>
+      <td class="py-3 px-3 border-b ${isWinner ? 'border-brandOrange/20 font-semibold' : 'border-black/5'}">${escapeHtml(f.productionTime)}</td>
+      <td class="py-3 px-3 border-b ${isWinner ? 'border-brandOrange/20' : 'border-black/5'}">${escapeHtml(f.shippingTime)}</td>
+      <td class="py-3 px-3 border-b ${isWinner ? 'border-brandOrange/20 font-semibold' : 'border-black/5'}">${escapeHtml(f.qualityScore)}</td>
+      <td class="py-3 px-3 border-b ${isWinner ? 'border-brandOrange/20' : 'border-black/5'}">${escapeHtml(f.capacity)}</td>
+    `;
+    decisionTableBody.appendChild(tr);
+  });
+
+  if (!factories.length) {
+    const tr = document.createElement('tr');
+    tr.className = 'bg-white';
+    tr.innerHTML = `
+      <td class="py-8 px-3 text-sm text-ink/60 border-b border-black/5" colspan="6">
+        No factory-level data yet. Ask a question to populate the Decision Canvas.
+      </td>
+    `;
+    decisionTableBody.appendChild(tr);
+  }
+
+  const lowest = [...factories].sort((a, b) => (a.baseCostValue ?? Infinity) - (b.baseCostValue ?? Infinity))[0] || null;
+  const fastest = [...factories].sort((a, b) => (a.productionTimeValue ?? Infinity) - (b.productionTimeValue ?? Infinity))[0] || null;
+
+  decisionInsightsList.innerHTML = `
+    <li class="flex gap-2">
+      <span class="mt-0.5 text-brandOrange"><i class="fa-solid fa-bolt"></i></span>
+      <span><span class="font-semibold">Lowest Cost Factory:</span> ${lowest ? `${escapeHtml(lowest.name)} (${escapeHtml(lowest.baseCost)})` : '—'}</span>
+    </li>
+    <li class="flex gap-2">
+      <span class="mt-0.5 text-brandOrange"><i class="fa-solid fa-bolt"></i></span>
+      <span><span class="font-semibold">Fastest Production Factory:</span> ${fastest ? `${escapeHtml(fastest.name)} (${escapeHtml(fastest.productionTime)})` : '—'}</span>
+    </li>
+    <li class="flex gap-2">
+      <span class="mt-0.5 text-brandOrange"><i class="fa-solid fa-bolt"></i></span>
+      <span><span class="font-semibold">Best Overall Choice:</span> ${winner ? escapeHtml(winner.name) : '—'}</span>
+    </li>
+  `;
+
+  decisionRankingCards.innerHTML = '';
+  factories.slice(0, 3).forEach((f, i) => {
+    const score = Math.max(0, Math.min(100, Math.round(f.avgScore || 0)));
+    const card = document.createElement('div');
+    card.className = 'rounded-xl border border-black/10 bg-white p-3 hover:shadow-sm transition';
+    card.innerHTML = `
+      <div class="flex items-start justify-between gap-2">
+        <div>
+          <div class="text-xs font-bold tracking-tight">#${i + 1} ${escapeHtml(f.name)}</div>
+          <div class="text-[11px] text-ink/60 mt-0.5"><i class="fa-solid fa-location-dot text-brandOrange mr-1"></i> ${escapeHtml(f.location)}</div>
+        </div>
+        <span class="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-appBg text-ink/70 text-[11px] font-semibold border border-black/10">
+          <i class="fa-solid fa-gauge-high text-brandBlue"></i> ${score}/100
+        </span>
+      </div>
+      <div class="mt-3 space-y-2 text-[11px] text-ink/70">
+        <div class="flex items-center justify-between"><span>Base cost</span><span class="font-semibold">${escapeHtml(f.baseCost)}</span></div>
+        <div class="flex items-center justify-between"><span>Production</span><span class="font-semibold">${escapeHtml(f.productionTime)}</span></div>
+        <div class="flex items-center justify-between"><span>Quality</span><span class="font-semibold">${escapeHtml(f.qualityScore)}</span></div>
+      </div>
+      <div class="mt-3 h-2 rounded-full bg-appBg border border-black/5 overflow-hidden">
+        <div class="h-full bg-brandBlue" style="width:${score}%"></div>
+      </div>
+    `;
+    decisionRankingCards.appendChild(card);
+  });
+
+  if (decisionExportBtn) {
+    decisionExportBtn.onclick = async () => {
+      const snapshot = {
+        session_id: state.sessionId,
+        query: payload?.query || state.lastQuery || null,
+        factories: factories.slice(0, 3).map((f) => ({
+          factory: f.name,
+          base_cost: f.baseCost,
+          production_time: f.productionTime,
+          quality_score: f.qualityScore,
+          location: f.location,
+        })),
+      };
+      try {
+        await navigator.clipboard.writeText(JSON.stringify(snapshot, null, 2));
+        showToast('Đã copy snapshot', 'success');
+      } catch {
+        showToast('Không copy được snapshot', 'error');
+      }
+    };
+  }
 }
