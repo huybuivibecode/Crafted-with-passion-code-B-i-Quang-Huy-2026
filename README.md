@@ -121,7 +121,7 @@ Truy cập vào ứng dụng tại địa chỉ: [http://localhost:8000](http://
 | `DEBUG` | Chế độ debug của Django | `True` |
 | `BURGER_PRINTS_API_KEY` | API Key kết nối với hệ thống BurgerPrints | *Yêu cầu* |
 | `GEMINI_API_KEY` | API Key kết nối với Google Gemini AI | *Yêu cầu* |
-| `GEMINI_MODEL` | Model LLM sử dụng trong Zorin Agent | `gemini-2.0-flash` |
+| `GEMINI_MODEL` | Model LLM sử dụng trong Zorin Agent | `gemini-3.1-flash-lite` |
 | `CATALOG_CACHE_TTL` | Thời gian sống của cache sản phẩm (giây) | `300` (5 phút) |
 
 ---
