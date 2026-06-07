@@ -12,11 +12,14 @@ from agent.zorin.workflow_nodes import (
     zorin_brain_node,
     intent_analysis_node,
     task_router_node,
-    route_after_task_router,
+    routing_validator_node,
+    route_after_routing_validator,
     zorin_ask_node,
     data_agent_node,
     function_node,
     output_node,
+    output_validator_node,
+    route_after_output_validator,
     memory_manager_node,
 )
 
@@ -31,10 +34,12 @@ NODE_META = {
     "brain": {"label": "🧠 Zorin Brain", "desc": "Validation + metadata + load/save memory (user msg)", "uses_llm": False},
     "intent_analysis": {"label": "🧩 Intent Analysis", "desc": "Xác định intent & tiêu chí", "uses_llm": True},
     "task_router": {"label": "🧭 Task Router", "desc": "Điều hướng hoặc yêu cầu bổ sung thông tin", "uses_llm": False},
+    "routing_validator": {"label": "🛡️ Routing Validator", "desc": "LLM giám sát task trước khi thực thi", "uses_llm": True},
     "zorinask": {"label": "❓ ZorinAsk", "desc": "Thu thập thông tin còn thiếu", "uses_llm": False},
     "data_agent": {"label": "🗃️ Data Agent", "desc": "Lớp truy xuất dữ liệu duy nhất (API/DB) + chuẩn hóa", "uses_llm": False},
     "function": {"label": "🧰 Zorin Function", "desc": "Xử lý nghiệp vụ (recommend/compare/stock/order)", "uses_llm": False},
     "output": {"label": "💬 Output", "desc": "Chuẩn hóa output thân thiện", "uses_llm": False},
+    "output_validator": {"label": "🛡️ Output Validator", "desc": "LLM giám sát output cuối trước khi trả", "uses_llm": True},
     "memory": {"label": "🧠 Memory Manager", "desc": "Ghi memory (assistant msg + metadata)", "uses_llm": False},
 }
 
@@ -325,10 +330,12 @@ def build_graph():
     workflow.add_node("brain", _make_traced_node("brain", zorin_brain_node))
     workflow.add_node("intent_analysis", _make_traced_node("intent_analysis", intent_analysis_node))
     workflow.add_node("task_router", _make_traced_node("task_router", task_router_node))
+    workflow.add_node("routing_validator", _make_traced_node("routing_validator", routing_validator_node))
     workflow.add_node("zorinask", _make_traced_node("zorinask", zorin_ask_node))
     workflow.add_node("data_agent", _make_traced_node("data_agent", data_agent_node))
     workflow.add_node("function", _make_traced_node("function", function_node))
     workflow.add_node("output", _make_traced_node("output", output_node))
+    workflow.add_node("output_validator", _make_traced_node("output_validator", output_validator_node))
     workflow.add_node("memory", _make_traced_node("memory", memory_manager_node))
 
     # ----------------------------------------------------------------
@@ -339,20 +346,31 @@ def build_graph():
     # ----------------------------------------------------------------
     workflow.add_edge("brain", "intent_analysis")
     workflow.add_edge("intent_analysis", "task_router")
+    workflow.add_edge("task_router", "routing_validator")
 
     workflow.add_conditional_edges(
-        "task_router",
-        route_after_task_router,
+        "routing_validator",
+        route_after_routing_validator,
         {
+            "task_router": "task_router",
             "zorinask": "zorinask",
             "data_agent": "data_agent",
+            "memory": "memory",
         },
     )
 
     workflow.add_edge("zorinask", "output")
     workflow.add_edge("data_agent", "function")
     workflow.add_edge("function", "output")
-    workflow.add_edge("output", "memory")
+    workflow.add_edge("output", "output_validator")
+    workflow.add_conditional_edges(
+        "output_validator",
+        route_after_output_validator,
+        {
+            "task_router": "task_router",
+            "memory": "memory",
+        },
+    )
     workflow.add_edge("memory", END)
 
     return workflow.compile()
@@ -432,6 +450,9 @@ def run_agent(query: str, session_id: str = "", conversation_history: list = Non
         "out_of_stock_ids": [],
         "inventory_snapshot": {},
         "alternatives": [],
+        "returned_objects": [],
+        "object_store_snapshot": {},
+        "applied_filters": [],
         "order_payload": {},
         "order_result": {},
         "reasons": [],
@@ -442,6 +463,16 @@ def run_agent(query: str, session_id: str = "", conversation_history: list = Non
         "zorin_route": "data_agent",
         "task": "",
         "missing_fields": [],
+        "task_replan_reason": "",
+        "replanned_task": "",
+        "replanned_route": "",
+        "validator_reason": "",
+        "validator_missing_information": [],
+        "reflection_trace": [],
+        "retry_count": 0,
+        "max_retry_count": 3,
+        "validation_reports": [],
+        "validator_next": "",
     }
 
     try:
@@ -458,6 +489,8 @@ def run_agent(query: str, session_id: str = "", conversation_history: list = Non
             "market_context": final_state.get("market_context", {}),
             "season_context": final_state.get("season_context", {}),
             "weather_context": final_state.get("weather_context", {}),
+            "applied_filters": final_state.get("applied_filters", []),
+            "returned_objects": final_state.get("returned_objects", []),
             "evidence": final_state.get("evidence", []),
             "validation_errors": final_state.get("validation_errors", []),
             "error": final_state.get("error", ""),
@@ -475,6 +508,8 @@ def run_agent(query: str, session_id: str = "", conversation_history: list = Non
             "market_context": {},
             "season_context": {},
             "weather_context": {},
+            "applied_filters": [],
+            "returned_objects": [],
             "evidence": [],
             "validation_errors": [],
             "error": str(e),

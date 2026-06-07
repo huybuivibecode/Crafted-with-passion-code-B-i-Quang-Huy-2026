@@ -19,6 +19,7 @@ from rest_framework import status
 from agent.models import Conversation
 from agent.graph.graph import GRAPH_DEFINITION
 from agent.zorin import handle_chat
+from agent.zorin.language import detect_response_language
 from agent.services import burgerprints as bp_api
 from agent.services.html_parser import normalize_product
 from agent.services.catalog_store import normalize_catalog_product
@@ -129,6 +130,8 @@ class ChatAPIView(APIView):
             "market_context": result.get("market_context", {}),
             "season_context": result.get("season_context", {}),
             "weather_context": result.get("weather_context", {}),
+            "applied_filters": result.get("applied_filters", []),
+            "returned_objects": result.get("returned_objects", []),
             "evidence": result.get("evidence", []),
             "validation_errors": result.get("validation_errors", []),
             "error": result.get("error", ""),
@@ -308,6 +311,7 @@ def _serialize_product(product: dict) -> dict:
         "partner_prices": product.get("partner_prices", {}),
         "price_min": product.get("price_min", 0),
         "price_max": product.get("price_max", 0),
+        "partner_summary": product.get("partner_summary", []),
         "available_colors": product.get("available_colors", []),
         "colors_count": product.get("colors_count", 0),
     }
@@ -327,11 +331,22 @@ def _serialize_message_metadata(metadata: dict) -> dict:
             })
         elif isinstance(item, dict):
             serialized_scores.append(item)
+    returned_objects = []
+    for item in (metadata.get("returned_objects", []) or [])[:12]:
+        if not isinstance(item, dict):
+            continue
+        product = item.get("product", {}) if isinstance(item.get("product"), dict) else {}
+        returned_objects.append({
+            "source": item.get("source", ""),
+            "product": _serialize_product(product),
+        })
     return {
         "scores": serialized_scores,
         "reasons": metadata.get("reasons", []) or [],
         "winner": _serialize_product(metadata.get("winner") or {}),
         "alternatives": [_serialize_product(p) for p in (metadata.get("alternatives", []) or [])[:3]],
+        "returned_objects": returned_objects,
+        "applied_filters": metadata.get("applied_filters", []) or [],
         "validation_errors": metadata.get("validation_errors", []) or [],
     }
 
@@ -350,36 +365,64 @@ def _serialize_scores(scores: list) -> list:
 
 
 def _build_follow_ups(intent: str, query: str, products: list, winner: dict, alternatives: list) -> list:
-    """Tạo gợi ý follow-up bằng tiếng Việt đúng dấu."""
+    """Tạo gợi ý follow-up theo cùng ngôn ngữ với query."""
     suggestions = []
+    language = detect_response_language(query)
     top_product = winner or (products[0] if products else {})
     second_product = products[1] if len(products) > 1 else {}
 
-    if intent == "recommend_product":
-        if top_product.get("name"):
-            suggestions.append(f"Phân tích kỹ hơn {top_product['name']}")
-            suggestions.append(f"Kiểm tra tồn kho cho {top_product['name']}")
-        if top_product.get("name") and second_product.get("name"):
-            suggestions.append(f"So sánh {top_product['name']} với {second_product['name']}")
-        suggestions.append("Lọc thêm theo partner, màu sắc và ngân sách")
-    elif intent == "compare_product":
-        if top_product.get("name"):
-            suggestions.append("Sản phẩm nào phù hợp thị trường US hơn trong các mẫu này?")
-            suggestions.append(f"Kiểm tra tồn kho cho {top_product['name']}")
-        suggestions.append("So sánh thêm theo partner, màu sắc và khoảng giá")
-    elif intent == "check_stock":
-        if alternatives:
-            suggestions.append(f"Tìm sản phẩm thay thế giống {alternatives[0].get('name', 'sản phẩm này')}")
-        suggestions.append("Lọc sản phẩm còn hàng theo partner và location")
-    elif intent == "create_order":
-        suggestions.append("Kiểm tra trạng thái đơn hàng vừa tạo")
-        suggestions.append("Tìm thêm sản phẩm để thêm vào đơn")
+    if language == "en":
+        if intent == "recommend_product":
+            if top_product.get("name"):
+                suggestions.append(f"Analyze {top_product['name']} in more detail")
+                suggestions.append(f"Check stock for {top_product['name']}")
+            if top_product.get("name") and second_product.get("name"):
+                suggestions.append(f"Compare {top_product['name']} with {second_product['name']}")
+            suggestions.append("Filter further by partner, color, and budget")
+        elif intent == "compare_product":
+            if top_product.get("name"):
+                suggestions.append("Which product is a better fit for the US market?")
+                suggestions.append(f"Check stock for {top_product['name']}")
+            suggestions.append("Compare them further by partner, color, and price range")
+        elif intent == "check_stock":
+            if alternatives:
+                suggestions.append(f"Find a similar alternative to {alternatives[0].get('name', 'this product')}")
+            suggestions.append("Filter in-stock products by partner and location")
+        elif intent == "create_order":
+            suggestions.append("Check the status of the order I just created")
+            suggestions.append("Find more products to add to the order")
+        else:
+            suggestions.extend([
+                "Recommend 3 POD products that are easiest to sell",
+                "Compare 2 products by price, colors, and partner",
+                "Find products under $12 for the US market",
+            ])
     else:
-        suggestions.extend([
-            "Gợi ý 3 sản phẩm POD dễ bán tốt nhất",
-            "So sánh 2 sản phẩm theo giá, màu sắc và partner",
-            "Tìm sản phẩm dưới $12 cho thị trường US",
-        ])
+        if intent == "recommend_product":
+            if top_product.get("name"):
+                suggestions.append(f"Phân tích kỹ hơn {top_product['name']}")
+                suggestions.append(f"Kiểm tra tồn kho cho {top_product['name']}")
+            if top_product.get("name") and second_product.get("name"):
+                suggestions.append(f"So sánh {top_product['name']} với {second_product['name']}")
+            suggestions.append("Lọc thêm theo partner, màu sắc và ngân sách")
+        elif intent == "compare_product":
+            if top_product.get("name"):
+                suggestions.append("Sản phẩm nào phù hợp thị trường US hơn trong các mẫu này?")
+                suggestions.append(f"Kiểm tra tồn kho cho {top_product['name']}")
+            suggestions.append("So sánh thêm theo partner, màu sắc và khoảng giá")
+        elif intent == "check_stock":
+            if alternatives:
+                suggestions.append(f"Tìm sản phẩm thay thế giống {alternatives[0].get('name', 'sản phẩm này')}")
+            suggestions.append("Lọc sản phẩm còn hàng theo partner và location")
+        elif intent == "create_order":
+            suggestions.append("Kiểm tra trạng thái đơn hàng vừa tạo")
+            suggestions.append("Tìm thêm sản phẩm để thêm vào đơn")
+        else:
+            suggestions.extend([
+                "Gợi ý 3 sản phẩm POD dễ bán tốt nhất",
+                "So sánh 2 sản phẩm theo giá, màu sắc và partner",
+                "Tìm sản phẩm dưới $12 cho thị trường US",
+            ])
 
     unique = []
     seen = set()

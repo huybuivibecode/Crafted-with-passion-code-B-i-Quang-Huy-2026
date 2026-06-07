@@ -10,6 +10,7 @@ const state = {
   ui: {
     showProductSuggestions: true,
     showPartnerColors: true,
+    canvasView: 'compare',
   },
   partnerColorCache: {},
   activeFilters: {
@@ -68,6 +69,12 @@ const canvasContent = document.getElementById('bp-canvas-content');
 const canvasFooter = document.getElementById('bp-canvas-footer');
 const btnMinimizeChat = document.getElementById('bp-min-chat-btn');
 const btnMinimizeCanvas = document.getElementById('bp-min-canvas-btn');
+const btnCanvasViewCompare = document.getElementById('bp-view-compare-btn');
+const btnCanvasViewProducts = document.getElementById('bp-view-products-btn');
+const canvasComparePanel = document.getElementById('bp-compare-panel');
+const canvasProductPanel = document.getElementById('bp-product-panel');
+const canvasProductEmpty = document.getElementById('bp-product-empty');
+const productActions = document.getElementById('bp-product-actions');
 
 // ---------------------------------------------------------------------------
 // Init
@@ -81,6 +88,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   await Promise.allSettled([checkAPIStatus(), loadConversationHistory()]);
   updateComposerState();
   syncLayoutState();
+  applyCanvasView();
   applySplitFromStorage();
   chatInput?.focus();
 });
@@ -201,6 +209,31 @@ function applySplitFromStorage() {
   if (savedMin === 'none') setSplitPercent(savedPct, { persist: false });
 }
 
+function applyCanvasView() {
+  const view = state.ui.canvasView === 'products' ? 'products' : 'compare';
+  if (canvasComparePanel) canvasComparePanel.classList.toggle('hidden', view !== 'compare');
+  if (canvasProductPanel) canvasProductPanel.classList.toggle('hidden', view !== 'products');
+  if (btnCanvasViewCompare) btnCanvasViewCompare.classList.toggle('is-active', view === 'compare');
+  if (btnCanvasViewProducts) btnCanvasViewProducts.classList.toggle('is-active', view === 'products');
+}
+
+function setCanvasView(view) {
+  state.ui.canvasView = view === 'products' ? 'products' : 'compare';
+  applyCanvasView();
+}
+
+function syncCanvasViewByPayload(payload = {}) {
+  const products = Array.isArray(payload?.products) ? payload.products : [];
+  const shouldPreferProducts = ['recommend_product', 'check_stock', 'product_detail_info', 'product_partner_info'].includes(payload?.intent);
+  if (products.length && shouldPreferProducts) {
+    setCanvasView('products');
+    return;
+  }
+  if (payload?.intent === 'compare_product') {
+    setCanvasView('compare');
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Event Listeners
 // ---------------------------------------------------------------------------
@@ -272,6 +305,9 @@ function setupEventListeners() {
     const current = localStorage.getItem(getMinimizeStorageKey()) || 'none';
     setMinimized(current !== 'none' ? 'none' : 'canvas');
   });
+
+  btnCanvasViewCompare?.addEventListener('click', () => setCanvasView('compare'));
+  btnCanvasViewProducts?.addEventListener('click', () => setCanvasView('products'));
 
   if (splitResizer) {
     splitResizer.addEventListener('pointerdown', (e) => {
@@ -571,7 +607,14 @@ async function loadConversationHistory() {
     });
 
     setActiveLayout(true);
+    state.allProducts = Array.isArray(lastAssistantPayload?.products) ? lastAssistantPayload.products : [];
+    if (state.allProducts.length) {
+      showProductCards(state.allProducts, lastAssistantPayload?.intent || '');
+    } else {
+      hideProductCards();
+    }
     renderDecisionCanvas({ products: lastAssistantPayload?.products || [] });
+    syncCanvasViewByPayload(lastAssistantPayload || {});
     scrollToBottom(false);
   } catch (err) {
     console.error('History load error:', err);
@@ -630,6 +673,7 @@ async function handleSend(forcedQuery = '') {
     }
 
     renderDecisionCanvas(data);
+    syncCanvasViewByPayload(data);
     appendAssistantMessage(data.response || 'Xin lỗi, tôi chưa tạo được câu trả lời phù hợp.', {
       intent: data.intent || '',
       products: data.products || [],
@@ -693,7 +737,8 @@ function appendUserMessage(text, options = {}) {
 
 function appendAssistantMessage(text, options = {}) {
   const time = options.timeLabel || getCurrentTime();
-  const formattedText = formatMarkdown(text);
+  const formattedText = formatMarkdown(text, { intent: options.intent || '' });
+  const isReportIntent = ['recommend_product', 'compare_product', 'check_stock', 'product_partner_info', 'other'].includes(options.intent);
   const intentBadge = options.intent ? `
     <span class="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-appBg text-ink/70 text-xs font-semibold border border-black/5">
       ${escapeHtml(getIntentLabel(options.intent))}
@@ -731,11 +776,11 @@ function appendAssistantMessage(text, options = {}) {
               </div>
             </div>
 
-            <div class="mt-3 text-sm leading-relaxed text-ink/80 md-content">
+            <div class="mt-3 text-sm leading-relaxed text-ink/80 md-content ${isReportIntent ? 'assistant-report-content' : ''}">
               ${formattedText}
             </div>
 
-            ${buildAssistantExtras(options)}
+            ${buildAssistantExtras({ ...options, rawText: text })}
 
             <div class="mt-2 text-[11px] text-ink/50">${time}</div>
           </div>
@@ -752,9 +797,11 @@ function buildAssistantExtras(options = {}) {
   const reasons = Array.isArray(options.reasons) ? options.reasons.slice(0, 3) : [];
   const followUps = Array.isArray(options.followUps) ? options.followUps.slice(0, 4) : [];
   const winner = options.winner || {};
+  const rawText = String(options.rawText || '');
+  const hasStructuredReport = /danh sách sản phẩm đề xuất|danh sách đề xuất hàng đầu|cơ sở lựa chọn|cơ sở đề xuất|kết quả tốt nhất/i.test(rawText);
 
   // Winner card - nâng cấp với thêm thông tin
-  const winnerHtml = winner?.name
+  const winnerHtml = winner?.name && !hasStructuredReport
     ? `
       <div class="mt-4 rounded-2xl bg-white border border-black/10 shadow-sm p-4">
         <div class="text-xs font-bold text-ink/60">🏆 Kết quả tốt nhất</div>
@@ -767,7 +814,7 @@ function buildAssistantExtras(options = {}) {
     : '';
 
   // Reasons
-  const reasonHtml = reasons.length
+  const reasonHtml = reasons.length && !hasStructuredReport
     ? `
       <div class="mt-4 rounded-2xl bg-appBg/60 border border-black/5 p-4">
         <div class="text-xs font-bold text-ink/60">✅ Lý do gợi ý</div>
@@ -779,7 +826,7 @@ function buildAssistantExtras(options = {}) {
     : '';
 
   // Inline product strip
-  const productsHtml = products.length
+  const productsHtml = products.length && !hasStructuredReport
     ? `
       <div class="mt-4 grid grid-cols-1 sm:grid-cols-3 gap-3">
         ${products.map((product, index) => buildInlineProductCard(product, index + 1)).join('')}
@@ -906,15 +953,19 @@ function showProductCards(products, intent) {
     return;
   }
 
-  productCardsArea?.classList.remove('hidden');
   const titleMap = {
-    recommend_product: '🏆 Sản phẩm gợi ý',
-    compare_product: '⚖️ Sản phẩm so sánh',
-    check_stock: '📦 Sản phẩm còn hàng',
-    create_order: '📋 Sản phẩm',
+    recommend_product: 'Sản phẩm gợi ý',
+    compare_product: 'Sản phẩm liên quan',
+    check_stock: 'Sản phẩm còn hàng',
+    create_order: 'Sản phẩm',
+    product_detail_info: 'Thông tin sản phẩm',
+    product_partner_info: 'Sản phẩm đang phân tích',
   };
-  if (productCardsTitle) productCardsTitle.textContent = titleMap[intent] || '📦 Sản phẩm tìm thấy';
+  if (productCardsTitle) productCardsTitle.textContent = titleMap[intent] || 'Sản phẩm tìm thấy';
   if (productCount) productCount.textContent = `${products.length} sản phẩm`;
+  if (productCardsArea) productCardsArea.classList.remove('hidden');
+  if (canvasProductEmpty) canvasProductEmpty.classList.add('hidden');
+  if (productActions) productActions.classList.remove('hidden');
   if (productCardsGrid) {
     productCardsGrid.innerHTML = '';
     products.forEach((product, index) => {
@@ -927,8 +978,12 @@ function showProductCards(products, intent) {
 }
 
 function hideProductCards() {
-  productCardsArea?.classList.add('hidden');
+  if (productCardsArea) productCardsArea.classList.add('hidden');
   if (productCardsGrid) productCardsGrid.innerHTML = '';
+  if (productCardsTitle) productCardsTitle.textContent = 'Thông tin sản phẩm';
+  if (productCount) productCount.textContent = 'Chưa có dữ liệu sản phẩm.';
+  if (canvasProductEmpty) canvasProductEmpty.classList.remove('hidden');
+  if (productActions) productActions.classList.add('hidden');
 }
 
 function applyProductSuggestionsVisibility() {
@@ -1478,13 +1533,194 @@ function getProductsFromMessageMetadata(metadata = {}) {
 // Markdown rendering
 // ---------------------------------------------------------------------------
 
-function formatMarkdown(text) {
+function formatMarkdown(text, options = {}) {
   if (!text) return '';
+  const normalizedText = preprocessAssistantText(text, options);
   if (typeof marked === 'undefined') {
-    return `<p>${escapeHtml(text).replace(/\n/g, '<br>')}</p>`;
+    return `<p>${escapeHtml(normalizedText).replace(/\n/g, '<br>')}</p>`;
   }
-  const rawHtml = marked.parse(text);
+  const rawHtml = marked.parse(normalizedText);
   return enhanceMarkdownHtml(sanitizeRenderedHtml(rawHtml));
+}
+
+function normalizeAssistantTextLayout(text) {
+  let normalized = String(text || '').replace(/\r\n?/g, '\n').trim();
+  if (!normalized) return '';
+
+  const blockLabels = [
+    'Danh sách sản phẩm đề xuất',
+    'Danh sách đề xuất hàng đầu',
+    'Danh mục sản phẩm đề xuất',
+    'Cơ sở lựa chọn',
+    'Cơ sở đề xuất',
+    'Kết luận',
+    'Khuyến nghị tiếp theo',
+    'Sản phẩm thay thế đề xuất',
+    'Thông tin xưởng của sản phẩm',
+    'Danh sách xưởng khả dụng',
+  ];
+  const metricLabels = [
+    'Điểm đánh giá:',
+    'Thông tin vận hành:',
+    'Vận hành:',
+    'Tài chính:',
+    'Đối tượng phù hợp:',
+    'Đối tượng:',
+    'Lưu ý:',
+    'SKU sản phẩm:',
+    'Khu vực sản xuất:',
+    'Thời gian xử lý:',
+    'Số xưởng hoặc partner khả dụng:',
+  ];
+
+  // Demote overly long markdown headings to plain text to avoid giant bold paragraphs.
+  normalized = normalized
+    .split('\n')
+    .map((line) => {
+      const match = line.match(/^(#{2,6})\s+(.+)$/);
+      if (!match) return line;
+      const headingText = match[2].trim();
+      const wordCount = headingText.split(/\s+/).filter(Boolean).length;
+      if (headingText.length > 90 || wordCount > 14 || /[,:;]\s/.test(headingText)) {
+        return headingText;
+      }
+      return line;
+    })
+    .join('\n');
+
+  // Force markdown headings onto their own line if they appear mid-paragraph.
+  normalized = normalized.replace(/([^\n])\s+(#{2,6}\s+)/g, '$1\n\n$2');
+
+  // Promote common section titles to their own block even when backend glues them inline.
+  blockLabels.forEach((label) => {
+    const escaped = label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    normalized = normalized.replace(new RegExp(`([^\\n])\\s+(${escaped})`, 'gi'), '$1\n\n$2');
+  });
+
+  // Put numbered items on new lines when they appear inline after prose.
+  normalized = normalized.replace(/([^\n])\s+(\d+\.\s+)/g, '$1\n$2');
+
+  // Break metrics into bullet-ready lines.
+  metricLabels.forEach((label) => {
+    const escaped = label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    normalized = normalized.replace(new RegExp(`([^\\n])\\s+(${escaped})`, 'gi'), '$1\n$2');
+  });
+
+  // Separate CTA or trailing suggestion sentences from dense report blocks.
+  normalized = normalized.replace(/([^\n])\s+(Nếu cần,? mình có thể|Nếu quý|Nếu bạn cần|Bạn có thể tiếp tục)/gi, '$1\n\n$2');
+
+  // Collapse excessive spaces but preserve intentional line breaks.
+  normalized = normalized
+    .split('\n')
+    .map((line) => line.replace(/[ \t]{2,}/g, ' ').trimEnd())
+    .join('\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+
+  return normalized;
+}
+
+function preprocessAssistantText(text, options = {}) {
+  const intent = String(options.intent || '');
+  const normalized = normalizeAssistantTextLayout(text);
+  if (!normalized) return '';
+  if (!['recommend_product', 'compare_product', 'check_stock', 'product_partner_info', 'other'].includes(intent)) {
+    return normalized;
+  }
+
+  const lines = normalized.split('\n').map((line) => line.trim());
+  const sectionTitles = new Set([
+    'Danh sách sản phẩm đề xuất',
+    'Danh sách đề xuất hàng đầu',
+    'Danh mục sản phẩm đề xuất',
+    'Cơ sở lựa chọn',
+    'Cơ sở đề xuất',
+    'Kết luận',
+    'Khuyến nghị tiếp theo',
+    'Sản phẩm thay thế đề xuất',
+    'Thông tin xưởng của sản phẩm',
+    'Danh sách xưởng khả dụng',
+  ]);
+  const metricPattern = /^(Điểm đánh giá|Thông tin vận hành|Vận hành|Tài chính|Đối tượng|Đối tượng phù hợp|Lưu ý|Danh sách mã đang hết hàng|SKU sản phẩm|Khu vực sản xuất|Thời gian xử lý|Số xưởng hoặc partner khả dụng):\s*(.+)$/i;
+
+  const out = [];
+  let firstNonEmptyHandled = false;
+  let inSupportSection = false;
+  const isDisplayTitle = (line) => {
+    const plain = String(line || '').replace(/^#{2,6}\s+/, '').trim();
+    if (!plain) return false;
+    const wordCount = plain.split(/\s+/).filter(Boolean).length;
+    return plain.length <= 82 && wordCount <= 12 && !/[,:;]\s/.test(plain);
+  };
+
+  for (let index = 0; index < lines.length; index += 1) {
+    const rawLine = lines[index];
+    const line = rawLine.trim();
+    const nextLine = (lines[index + 1] || '').trim();
+    if (!line) {
+      if (out[out.length - 1] !== '') out.push('');
+      continue;
+    }
+
+    if (!firstNonEmptyHandled) {
+      if (isDisplayTitle(line)) {
+        out.push(`## ${line.replace(/^#{2,6}\s+/, '')}`);
+        out.push('');
+      } else {
+        out.push(line.replace(/^#{2,6}\s+/, ''));
+      }
+      firstNonEmptyHandled = true;
+      inSupportSection = false;
+      continue;
+    }
+
+    if (sectionTitles.has(line)) {
+      if (out[out.length - 1] !== '') out.push('');
+      out.push(`### ${line}`);
+      out.push('');
+      inSupportSection = /cơ sở lựa chọn|cơ sở đề xuất|sản phẩm thay thế đề xuất/i.test(line);
+      continue;
+    }
+
+    if (/^\d+\.\s+/.test(line)) {
+      if (out[out.length - 1] !== '') out.push('');
+      out.push(`#### ${line}`);
+      inSupportSection = false;
+      continue;
+    }
+
+    if (
+      ['recommend_product', 'check_stock'].includes(intent)
+      && nextLine
+      && /^(Điểm đánh giá|Thông tin vận hành|Vận hành|Tài chính|Đối tượng|Đối tượng phù hợp|Lưu ý):/i.test(nextLine)
+      && !/^(##|###|####|-|\*|\d+\.)/.test(line)
+    ) {
+      if (out[out.length - 1] !== '') out.push('');
+      out.push(`#### ${line}`);
+      inSupportSection = false;
+      continue;
+    }
+
+    const metricMatch = line.match(metricPattern);
+    if (metricMatch) {
+      out.push(`- **${metricMatch[1]}:** ${metricMatch[2]}`);
+      continue;
+    }
+
+    if (inSupportSection && !/^[-*]\s+/.test(line)) {
+      out.push(`- ${line}`);
+      continue;
+    }
+
+    out.push(line);
+  }
+
+  const cleaned = [];
+  for (const line of out) {
+    if (line === '' && cleaned[cleaned.length - 1] === '') continue;
+    cleaned.push(line);
+  }
+  return cleaned.join('\n').trim();
 }
 
 function sanitizeRenderedHtml(html) {

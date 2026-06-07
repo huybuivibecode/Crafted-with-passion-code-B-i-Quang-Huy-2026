@@ -1,60 +1,73 @@
 """
-AgentState - TypedDict định nghĩa toàn bộ state của LangGraph pipeline
+AgentState - TypedDict dinh nghia toan bo state cua LangGraph pipeline
 """
-from typing import TypedDict, List, Optional
+from typing import List, Optional, TypedDict
 
 
 class AgentState(TypedDict):
     # Input
-    query: str                          # Câu hỏi người dùng
-    session_id: str                     # ID phiên chat
-    conversation_history: List[dict]    # Lịch sử hội thoại [{role, content}]
+    query: str
+    session_id: str
+    conversation_history: List[dict]
 
     # Intent detection
-    intent: str                         # recommend_product | compare_product | check_stock | create_order | catalog_info | general_inquiry
-    extracted_criteria: dict            # Tiêu chí trích xuất: location, max_lead_time, market, print_method, catalog_query_type, partner_preference, color_preference, max_price, min_price...
+    intent: str
+    extracted_criteria: dict
 
     # Product data
-    products_raw: List[dict]            # Dữ liệu thô từ BurgerPrints API
-    products_norm: List[dict]           # Dữ liệu đã normalize + parse html_desc
-    catalog_index: dict                 # Canonical product lookup maps
-    candidates: List[dict]              # Danh sách ứng viên sau lọc
-    scores: List[dict]                  # [{product, score, breakdown}]
-    winner: Optional[dict]              # Sản phẩm được chọn
+    products_raw: List[dict]
+    products_norm: List[dict]
+    catalog_index: dict
+    candidates: List[dict]
+    scores: List[dict]
+    winner: Optional[dict]
 
     # Commerce decision context
-    market_context: dict                # Market profile and category preferences
-    season_context: dict                # Season inferred from market/date
-    weather_context: dict               # Weather/climate suitability context
-    demand_signals: dict                # Trend, competition, and review proxy scores
-    pricing_context: dict               # Pricing, margin, profit, ROI per product
-    persona_context: dict               # Persona fit per product
-    compatibility_context: dict         # Design/product fit per product
-    evidence: List[dict]                # Traceable evidence used by scoring
+    market_context: dict
+    season_context: dict
+    weather_context: dict
+    demand_signals: dict
+    pricing_context: dict
+    persona_context: dict
+    compatibility_context: dict
+    evidence: List[dict]
 
     # Comparison
-    compare_ids: List[str]              # IDs sản phẩm cần so sánh
-    compare_products: List[dict]        # Chi tiết các sản phẩm so sánh
+    compare_ids: List[str]
+    compare_products: List[dict]
 
     # Out of stock
-    out_of_stock_ids: List[str]         # IDs đang hết hàng
-    inventory_snapshot: dict            # Trạng thái tồn kho chuẩn hóa
-    alternatives: List[dict]            # Sản phẩm thay thế
+    out_of_stock_ids: List[str]
+    inventory_snapshot: dict
+    alternatives: List[dict]
+    returned_objects: List[dict]
+    object_store_snapshot: dict
+    applied_filters: List[dict]
 
     # Order creation
-    order_payload: dict                 # Payload cho POST /v2/order
-    order_result: dict                  # Kết quả từ API
+    order_payload: dict
+    order_result: dict
 
     # Output
-    reasons: List[str]                  # Lý do chọn sản phẩm
-    response_msg: str                   # Câu trả lời cuối cùng
-    error: str                          # Thông báo lỗi (nếu có)
-    validation_errors: List[str]        # Lỗi chuẩn hóa/validation đầu ra
+    reasons: List[str]
+    response_msg: str
+    error: str
+    validation_errors: List[str]
 
-    # Execution trace (for graph visualization)
-    node_trace: List[dict]              # [{node_id, label, status, method, duration_ms, summary, error}]
+    # Execution trace
+    node_trace: List[dict]
 
     # Zorin orchestration
-    zorin_route: str                    # data_agent | zorinask
-    task: str                           # recommend_product | compare_product | check_stock | create_order | catalog_info | general_inquiry
-    missing_fields: List[str]           # Fields required to proceed (if any)
+    zorin_route: str
+    task: str
+    missing_fields: List[str]
+    task_replan_reason: str
+    replanned_task: str
+    replanned_route: str
+    validator_reason: str
+    validator_missing_information: List[str]
+    reflection_trace: List[dict]
+    retry_count: int
+    max_retry_count: int
+    validation_reports: List[dict]
+    validator_next: str

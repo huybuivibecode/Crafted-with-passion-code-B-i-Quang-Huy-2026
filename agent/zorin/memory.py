@@ -14,8 +14,17 @@ class MemoryManager:
         conversation = Conversation.objects.filter(session_id=session_id).first()
         if not conversation:
             return []
-        qs = conversation.messages.order_by("created_at")[:limit]
-        return [{"role": m.role, "content": m.content} for m in qs]
+        latest = list(conversation.messages.order_by("-created_at")[:limit])
+        latest.reverse()
+        return [
+            {
+                "role": m.role,
+                "content": m.content,
+                "intent": m.intent,
+                "metadata": m.metadata or {},
+            }
+            for m in latest
+        ]
 
     def save_message(
         self,

@@ -14,6 +14,7 @@ from langchain_core.messages import SystemMessage, HumanMessage
 from pydantic import BaseModel, Field
 
 from agent.graph.state import AgentState
+from agent.services.api_knowledge import get_api_knowledge
 from agent.services import burgerprints as bp_api
 from agent.services.catalog_store import (
     annotate_inventory,
@@ -43,6 +44,7 @@ from agent.services.commerce_intel import (
 from agent.services.html_parser import normalize_product
 
 logger = logging.getLogger(__name__)
+API_KNOWLEDGE = get_api_knowledge()
 
 
 # ---------------------------------------------------------------------------
@@ -128,6 +130,12 @@ class IntentOutput(BaseModel):
     color_preference: List[str] = Field(default_factory=list, description="Preferred colors: black, white, blue, etc.")
     max_price: float = Field(default=9999.0, description="Maximum price limit")
     min_price: float = Field(default=0.0, description="Minimum price limit")
+    base_cost_max: float = Field(default=9999.0, description="Maximum acceptable base cost / cost price")
+    base_cost_min: float = Field(default=0.0, description="Minimum acceptable base cost / cost price")
+    selling_price_max: float = Field(default=9999.0, description="Maximum acceptable selling price")
+    selling_price_min: float = Field(default=0.0, description="Minimum acceptable selling price")
+    target_margin_min: float = Field(default=0.0, description="Minimum acceptable margin percentage")
+    target_roi_min: float = Field(default=0.0, description="Minimum acceptable ROI percentage")
     skus: List[str] = Field(default_factory=list, description="Extracted SKU codes")
     list_all: bool = Field(
         default=False,
@@ -141,6 +149,15 @@ class IntentOutput(BaseModel):
 class ResponseOutput(BaseModel):
     response: str = Field(description="Câu trả lời đầy đủ cho người dùng bằng tiếng Việt")
     reasons: List[str] = Field(default_factory=list, description="Danh sách lý do chọn sản phẩm")
+
+
+class PolishedResponseOutput(BaseModel):
+    response: str = Field(
+        description=(
+            "Bản biên tập cuối cùng bằng tiếng Việt hoặc tiếng Anh, trình bày đẹp, chuyên nghiệp, "
+            "không thay đổi dữ kiện, không bịa thêm SKU/giá/điểm số."
+        )
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -169,7 +186,9 @@ def detect_intent_node(state: AgentState) -> AgentState:
                 for m in history[-4:]
             ])
 
-        system_prompt = """Bạn là AI assistant phân tích intent của seller POD (Print on Demand) trên nền tảng BurgerPrints.
+        system_prompt = f"""Bạn là AI assistant phân tích intent của seller POD (Print on Demand) trên nền tảng BurgerPrints.
+
+{API_KNOWLEDGE}
 
 Phân tích câu hỏi và trả về JSON với các trường sau:
 - intent: "recommend_product" | "compare_product" | "check_stock" | "create_order" | "catalog_info" | "general_inquiry"
@@ -185,6 +204,12 @@ Phân tích câu hỏi và trả về JSON với các trường sau:
 - color_preference: danh sách màu ưu tiên
 - max_price: giá tối đa (nếu đề cập)
 - min_price: giá tối thiểu (nếu đề cập)
+- base_cost_max: giá vốn tối đa / chi phí tối đa
+- base_cost_min: giá vốn tối thiểu
+- selling_price_max: giá bán tối đa
+- selling_price_min: giá bán tối thiểu
+- target_margin_min: margin tối thiểu theo %
+- target_roi_min: ROI tối thiểu theo %
 - skus: danh sách mã SKU cụ thể
 - list_all: true khi user muốn xem TOÀN BỘ danh sách ("toàn bộ", "tất cả", "danh sách đầy đủ", "liệt kê", "cho tôi hết", "all", "list all")
 
@@ -192,6 +217,7 @@ CÁC INTENT VÀ VÍ DỤ:
 1. recommend_product:
    - "Tôi muốn bán áo thun cho thị trường Mỹ" → recommend_product, location_preference: US
    - "Tìm áo màu đen, partner Spire, dưới $12, ship US" → recommend_product, partner_preference: [Spire], color_preference: [black], max_price: 12.0, location_preference: US
+   - "Tôi muốn bán T-shirt cho thị trường Mỹ, giá vốn dưới $8, ship dưới 5 ngày" → recommend_product, location_preference: US, base_cost_max: 8.0, max_lead_time: 5
    - "Cho tôi toàn bộ tên sản phẩm còn hàng tại China" → recommend_product, location_preference: China, list_all: true
    - "Liệt kê tất cả sản phẩm kho US" → recommend_product, location_preference: US, list_all: true
    - "Seller mới nên bán gì?" → recommend_product
@@ -245,6 +271,12 @@ CÁC INTENT VÀ VÍ DỤ:
                 "color_preference": getattr(result, 'color_preference', []) or [],
                 "max_price": getattr(result, 'max_price', 9999.0) or 9999.0,
                 "min_price": getattr(result, 'min_price', 0.0) or 0.0,
+                "base_cost_max": getattr(result, 'base_cost_max', 9999.0) or 9999.0,
+                "base_cost_min": getattr(result, 'base_cost_min', 0.0) or 0.0,
+                "selling_price_max": getattr(result, 'selling_price_max', 9999.0) or 9999.0,
+                "selling_price_min": getattr(result, 'selling_price_min', 0.0) or 0.0,
+                "target_margin_min": getattr(result, 'target_margin_min', 0.0) or 0.0,
+                "target_roi_min": getattr(result, 'target_roi_min', 0.0) or 0.0,
                 "skus": getattr(result, 'skus', []) or [],
                 "list_all": getattr(result, 'list_all', False),
             },
@@ -657,20 +689,52 @@ def _build_reasons(product: dict, breakdown: dict, criteria: dict) -> List[str]:
     pm = product.get("print_method", "Unknown")
 
     if loc != "Unknown":
-        reasons.append(f"📍 Sản xuất tại **{loc}** - phù hợp với thị trường mục tiêu")
+        reasons.append(f"Sản xuất tại {loc}, phù hợp với thị trường mục tiêu.")
     if proc != "Unknown":
-        reasons.append(f"⏱️ Thời gian xử lý **{proc}** - giao hàng nhanh")
+        reasons.append(f"Thời gian xử lý {proc}, hỗ trợ giao hàng tương đối nhanh.")
     if material != "Unknown":
-        reasons.append(f"🧵 Chất liệu **{material}** - chất lượng tốt")
+        reasons.append(f"Chất liệu {material}, phù hợp với nhóm sản phẩm được đề xuất.")
     if pm != "Unknown":
-        reasons.append(f"🖨️ Công nghệ in **{pm}** - phổ biến và ổn định")
+        reasons.append(f"Công nghệ in {pm}, phổ biến và ổn định trong vận hành.")
     if breakdown:
-        reasons.append(f"📈 Market fit **{breakdown.get('market_fit', 0):.0f}/100**, season fit **{breakdown.get('season_fit', 0):.0f}/100**")
-        reasons.append(f"💰 Margin score **{breakdown.get('margin', 0):.0f}/100**, trend score **{breakdown.get('trend', 0):.0f}/100**")
+        reasons.append(
+            f"Điểm phù hợp thị trường đạt {breakdown.get('market_fit', 0):.0f}/100 "
+            f"và điểm phù hợp mùa vụ đạt {breakdown.get('season_fit', 0):.0f}/100."
+        )
+        reasons.append(
+            f"Điểm biên lợi nhuận đạt {breakdown.get('margin', 0):.0f}/100 "
+            f"và điểm xu hướng đạt {breakdown.get('trend', 0):.0f}/100."
+        )
     if product.get("recommended_audience"):
-        reasons.append(f"🎯 Nhóm khách hàng phù hợp: **{product.get('recommended_audience')}**")
+        reasons.append(f"Nhóm khách hàng phù hợp: {product.get('recommended_audience')}.")
 
     return reasons
+
+
+def _translate_risk_text(risk: str) -> str:
+    text = (risk or "").strip()
+    if not text:
+        return ""
+
+    normalized = text.lower()
+    if normalized == "high market saturation":
+        return "Mức độ cạnh tranh trên thị trường đang ở mức cao."
+    if normalized == "inventory freshness is unknown":
+        return "Chưa có đủ dữ liệu để xác nhận độ cập nhật mới nhất của tồn kho."
+    if normalized == "warm weather can reduce apparel demand":
+        return "Điều kiện thời tiết nóng có thể làm giảm nhu cầu đối với nhóm sản phẩm này."
+    if normalized == "no major risk from available signals":
+        return "Chưa ghi nhận rủi ro đáng kể từ dữ liệu hiện có."
+
+    weak_match = re.match(r"(.+?)\s+is weak for\s+(.+)", text, flags=re.IGNORECASE)
+    if weak_match:
+        season = weak_match.group(2).strip()
+        return f"Mức độ phù hợp theo mùa hiện chưa cao trong giai đoạn {season}."
+
+    text = text.replace("_", " ").strip(" .")
+    if not text:
+        return ""
+    return text[0].upper() + text[1:] + "."
 
 
 def _build_product_risks(
@@ -878,7 +942,7 @@ def order_builder_node(state: AgentState) -> AgentState:
 # ---------------------------------------------------------------------------
 
 def generate_response_node(state: AgentState) -> AgentState:
-    """Create a deterministic response from validated, canonical product data."""
+    """Create a deterministic response, then optionally polish it with LLM."""
     intent = state.get("intent", "")
     query = state.get("query", "")
     scores = state.get("scores", [])
@@ -921,7 +985,102 @@ def generate_response_node(state: AgentState) -> AgentState:
         label = top.get("name") or top.get("short_code") or "sản phẩm này"
         response = f"Mình chưa kết xuất được phần giải thích so sánh. Bạn thử hỏi: `Phân tích chi tiết {label}` hoặc `So sánh [SP1] với [SP2]`."
 
+    polished_response = _polish_response_with_llm(
+        query=query,
+        intent=intent,
+        response=response,
+        criteria=criteria,
+    )
+
+    if polished_response:
+        response = polished_response
+
     return {**state, "response_msg": response}
+
+
+def _polish_response_with_llm(
+    query: str,
+    intent: str,
+    response: str,
+    criteria: dict,
+) -> str:
+    """Use LLM as a final editorial layer without changing factual content."""
+    if not response or intent not in {"recommend_product", "compare_product", "check_stock"}:
+        return response
+
+    try:
+        llm = _get_llm(temperature=0.05)
+        llm_structured = llm.with_structured_output(PolishedResponseOutput)
+
+        criteria_text = json.dumps(criteria or {}, ensure_ascii=False)
+        system_prompt = """Bạn là biên tập viên cao cấp chuyên chuẩn hóa phản hồi tư vấn sản phẩm POD cho khách hàng doanh nghiệp.
+
+Mục tiêu:
+- Biên tập lại phản hồi đầu vào thành một bản trình bày chuyên nghiệp, trang trọng, rõ ràng và có tính tư vấn.
+- Chỉ được phép cải thiện cách diễn đạt, bố cục, tiêu đề, bullet, nhịp câu và markdown.
+- Tuyệt đối không được thay đổi dữ kiện thực tế.
+
+Nguyên tắc bất biến:
+- Giữ nguyên toàn bộ tên sản phẩm, SKU, giá bán gợi ý, lợi nhuận, ROI, điểm số, thị trường, thời gian xử lý, công nghệ in và kết luận.
+- Không bịa thêm sản phẩm, không thêm nhận định mới nếu đầu vào chưa có, không tự suy diễn.
+- Không thay đổi thứ hạng sản phẩm.
+- Không tự thêm phần thưởng, huy hiệu, slogan hoặc kết luận thừa.
+- Không được để sót dữ kiện quan trọng đã xuất hiện trong đầu vào.
+
+Chuẩn phong cách:
+- Văn phong trang trọng, tự tin, gọn, đúng chính tả, phù hợp báo cáo tư vấn thương mại.
+- Ưu tiên câu ngắn, rõ nghĩa, tránh kiểu nói hội thoại suồng sã.
+- Markdown sạch, có tiêu đề hợp lý, khoảng cách dòng dễ đọc.
+- Chỉ dùng emoji nếu thực sự cần; mặc định không dùng emoji.
+
+Quy tắc trình bày bắt buộc:
+- Với intent recommend_product:
+  1. Một tiêu đề ngắn, chuyên nghiệp.
+  2. Một đoạn mở đầu 1-2 câu nêu đã phân tích theo yêu cầu nào.
+  3. Một mục danh sách sản phẩm đề xuất.
+  4. Mỗi sản phẩm phải trình bày nhất quán theo các dòng: tên + SKU, điểm đánh giá, thông tin vận hành, tài chính, đối tượng phù hợp, lưu ý.
+  5. Một mục kết luận hoặc cơ sở lựa chọn nếu đầu vào có dữ kiện tương ứng.
+  6. Một câu kết ngắn nêu khả năng hỗ trợ tiếp nếu đầu vào có CTA.
+- Với intent compare_product:
+  1. Giữ bảng so sánh nếu bảng đã rõ ràng.
+  2. Thêm mở đầu và kết luận ngắn gọn, không lan man.
+- Với intent check_stock:
+  1. Mở đầu ngắn.
+  2. Danh sách trạng thái tồn kho hoặc sản phẩm thay thế rõ ràng.
+  3. Kết thúc bằng câu hỗ trợ tiếp theo nếu phù hợp.
+
+Quy tắc cấm:
+- Không để tiêu đề treo, ví dụ như một dòng kiểu "Kết quả tốt nhất" nhưng không có nội dung theo sau.
+- Không lặp lại cùng một ý bằng nhiều cách khác nhau.
+- Không pha trộn quá nhiều kiểu bullet hoặc định dạng.
+- Không biến kết quả thành quảng cáo khoa trương.
+- Không chèn giải thích nội bộ như "dựa trên prompt", "theo mô hình", "tôi đã biên tập".
+
+Yêu cầu đầu ra:
+- Trả về duy nhất nội dung hoàn chỉnh trong trường response.
+- Nếu đầu vào đã khá tốt, vẫn phải tinh chỉnh để đạt chuẩn chuyên nghiệp cao hơn, không trả lại gần như nguyên văn theo kiểu đối phó."""
+
+        human_prompt = (
+            f"Intent: {intent}\n"
+            f"Query người dùng: {query}\n"
+            f"Tiêu chí đã trích xuất: {criteria_text}\n\n"
+            "Hãy biên tập lại phản hồi sau theo đúng chuẩn tư vấn chuyên nghiệp, "
+            "giữ nguyên dữ kiện nhưng nâng chất lượng trình bày lên mức cao hơn.\n\n"
+            f"Phản hồi gốc cần biên tập lại:\n{response}"
+        )
+
+        result: PolishedResponseOutput = _invoke_with_retry(
+            llm_structured,
+            [
+                SystemMessage(content=system_prompt),
+                HumanMessage(content=human_prompt),
+            ],
+        )
+        polished = (result.response or "").strip()
+        return polished or response
+    except Exception as e:
+        logger.warning(f"LLM response polish failed: {e}")
+        return response
 
 
 def _build_deterministic_response(
@@ -959,26 +1118,54 @@ def _build_deterministic_response(
         parts = []
         loc_val = (criteria_dict.get("location_preference") or "").strip()
         if loc_val:
-            parts.append(f"📍 {loc_val.upper()}")
+            parts.append(f"Thị trường: {loc_val.upper()}")
         pm_val = (criteria_dict.get("print_method") or "").strip()
         if pm_val:
-            parts.append(f"🖨️ {pm_val}")
+            parts.append(f"Công nghệ in: {pm_val}")
         max_lead_val = criteria_dict.get("max_lead_time", 999)
         if isinstance(max_lead_val, int) and 0 < max_lead_val < 999:
-            parts.append(f"⏱️ ≤{max_lead_val} ngày")
+            parts.append(f"Thời gian xử lý: <={max_lead_val} ngày")
+        base_cost_max_val = criteria_dict.get("base_cost_max", 9999.0)
+        try:
+            base_cost_max_val = float(base_cost_max_val)
+        except Exception:
+            base_cost_max_val = 9999.0
+        if 0 < base_cost_max_val < 9999.0:
+            parts.append(f"Giá vốn tối đa: ${base_cost_max_val:g}")
+        selling_price_max_val = criteria_dict.get("selling_price_max", 9999.0)
+        try:
+            selling_price_max_val = float(selling_price_max_val)
+        except Exception:
+            selling_price_max_val = 9999.0
+        if 0 < selling_price_max_val < 9999.0:
+            parts.append(f"Giá bán tối đa: ${selling_price_max_val:g}")
         max_price_val = criteria_dict.get("max_price", 9999.0)
         try:
             max_price_val = float(max_price_val)
         except Exception:
             max_price_val = 9999.0
-        if 0 < max_price_val < 9999.0:
-            parts.append(f"💵 ≤${max_price_val:g}")
+        if 0 < max_price_val < 9999.0 and base_cost_max_val >= 9999.0 and selling_price_max_val >= 9999.0:
+            parts.append(f"Giá tối đa: ${max_price_val:g}")
+        margin_min_val = criteria_dict.get("target_margin_min", 0.0)
+        try:
+            margin_min_val = float(margin_min_val)
+        except Exception:
+            margin_min_val = 0.0
+        if margin_min_val > 0:
+            parts.append(f"Margin tối thiểu: {margin_min_val:g}%")
+        roi_min_val = criteria_dict.get("target_roi_min", 0.0)
+        try:
+            roi_min_val = float(roi_min_val)
+        except Exception:
+            roi_min_val = 0.0
+        if roi_min_val > 0:
+            parts.append(f"ROI tối thiểu: {roi_min_val:g}%")
         partner_prefs = [p for p in (criteria_dict.get("partner_preference") or []) if p]
         if partner_prefs:
-            parts.append(f"🏭 {', '.join(partner_prefs[:2])}{'…' if len(partner_prefs) > 2 else ''}")
+            parts.append(f"Partner: {', '.join(partner_prefs[:2])}{'…' if len(partner_prefs) > 2 else ''}")
         color_prefs = [c for c in (criteria_dict.get("color_preference") or []) if c]
         if color_prefs:
-            parts.append(f"🎨 {', '.join(color_prefs[:2])}{'…' if len(color_prefs) > 2 else ''}")
+            parts.append(f"Màu sắc: {', '.join(color_prefs[:2])}{'…' if len(color_prefs) > 2 else ''}")
         return " · ".join(parts)
     def _escape_table_cell(value) -> str:
         text = "" if value is None else str(value)
@@ -1009,11 +1196,9 @@ def _build_deterministic_response(
 
     loc = criteria.get("location_preference", "")
     max_lead = criteria.get("max_lead_time", 999)
-    print_pref = criteria.get("print_method", "")
-
     header_notes = []
     if validation_errors:
-        header_notes.append("> Validation gate removed non-canonical fields before response generation.")
+        header_notes.append("> Lưu ý: Hệ thống đã loại bỏ một số trường dữ liệu không hợp lệ trước khi tạo phản hồi.")
 
     # ── Compare product intent ──
     if intent == "compare_product":
@@ -1022,7 +1207,7 @@ def _build_deterministic_response(
         max_items = requested_count or 3
         norm_cp = compare_products[:max_items] if compare_products else [item.get("product", {}) for item in scores[:max_items]]
         if not norm_cp:
-            return "❌ Không tìm thấy sản phẩm để so sánh. Vui lòng cung cấp tên/mã sản phẩm rõ ràng hơn."
+            return "Không tìm thấy sản phẩm để so sánh. Vui lòng cung cấp tên hoặc mã sản phẩm rõ ràng hơn."
 
         # Lấy scores từ state nếu có
         score_by_code = {}
@@ -1035,10 +1220,10 @@ def _build_deterministic_response(
         # Build comparison table
         filters_line = _format_filters(criteria)
         lines = [
-            "## ⚖️ So sánh sản phẩm",
+            "## Bảng So Sánh Sản Phẩm",
             "",
-            f"Mình đang so sánh theo yêu cầu: *\"{query}\"*",
-            (f"*Bộ lọc đang áp dụng:* {filters_line}" if filters_line else ""),
+            f"Yêu cầu đã tiếp nhận: *\"{query}\"*",
+            (f"Tiêu chí đang áp dụng: {filters_line}" if filters_line else ""),
             "",
             "| Tiêu chí | " + " | ".join(
                 f"**{_escape_table_cell(p.get('name', '?'))}**<br/><code>{_escape_table_cell(p.get('short_code', '?'))}</code>"
@@ -1049,11 +1234,11 @@ def _build_deterministic_response(
 
         # Core attributes
         core_fields = [
-            ("📍 Location", "location"),
-            ("⏱️ Processing", "processing_time"),
-            ("🧵 Material", "material"),
-            ("🖨️ Print", "print_method"),
-            ("📦 Inventory", "inventory_status"),
+            ("Khu vực", "location"),
+            ("Thời gian xử lý", "processing_time"),
+            ("Chất liệu", "material"),
+            ("Công nghệ in", "print_method"),
+            ("Tồn kho", "inventory_status"),
         ]
 
         for label, key in core_fields:
@@ -1074,7 +1259,7 @@ def _build_deterministic_response(
             else:
                 partner_str = "?"
             partner_lines.append(partner_str)
-        lines.append(f"| 🏭 Partners | " + " | ".join(_escape_table_cell(p) for p in partner_lines) + " |")
+        lines.append(f"| Partner | " + " | ".join(_escape_table_cell(p) for p in partner_lines) + " |")
 
         # Price comparison
         price_lines = []
@@ -1086,7 +1271,7 @@ def _build_deterministic_response(
             else:
                 price_str = f"${price_min:.2f}–${price_max:.2f}"
             price_lines.append(price_str)
-        lines.append(f"| 💵 Price Range | " + " | ".join(_escape_table_cell(p) for p in price_lines) + " |")
+        lines.append(f"| Khoảng giá | " + " | ".join(_escape_table_cell(p) for p in price_lines) + " |")
 
         # Colors comparison
         color_lines = []
@@ -1101,16 +1286,16 @@ def _build_deterministic_response(
             else:
                 color_str = "?"
             color_lines.append(color_str)
-        lines.append(f"| 🎨 Colors | " + " | ".join(_escape_table_cell(c) for c in color_lines) + " |")
+        lines.append(f"| Màu sắc | " + " | ".join(_escape_table_cell(c) for c in color_lines) + " |")
 
         # Score rows
         score_fields = [
-            ("Final Score", "score"),
-            ("Trend Score", "trend"),
-            ("Market Fit", "market_fit"),
-            ("Season Fit", "season_fit"),
-            ("Margin Score", "margin"),
-            ("Competition Score", "competition"),
+            ("Điểm tổng", "score"),
+            ("Điểm xu hướng", "trend"),
+            ("Độ phù hợp thị trường", "market_fit"),
+            ("Độ phù hợp mùa vụ", "season_fit"),
+            ("Điểm biên lợi nhuận", "margin"),
+            ("Điểm cạnh tranh", "competition"),
         ]
 
         for label, key in score_fields:
@@ -1133,37 +1318,37 @@ def _build_deterministic_response(
             winner = scores[0].get("product", {})
             winner_code = winner.get("short_code", "?")
             winner_name = winner.get("name", "?")
-            lines.append(f"**🏆 Kết luận nhanh:** `{winner_code}` (**{winner_name}**) là lựa chọn nổi bật nhất theo điểm tổng.")
+            lines.append(f"**Kết luận:** `{winner_code}` ({winner_name}) là lựa chọn nổi bật nhất theo điểm đánh giá tổng hợp.")
             lines.append("")
-            lines.append("Nếu bạn muốn, mình có thể so sánh sâu hơn theo **giá**, **màu**, hoặc **partner** (vd: chỉ lấy partner Spire).")
+            lines.append("Nếu cần, tôi có thể tiếp tục so sánh sâu hơn theo giá, màu sắc hoặc partner fulfilment.")
         else:
-            lines.append("**📊 So sánh dựa trên thông số cơ bản:**")
-            lines.append("- **Location:** Địa điểm fulfillment")
-            lines.append("- **Processing:** Thời gian xử lý")
-            lines.append("- **Material:** Chất liệu sản phẩm")
-            lines.append("- **Print Method:** Công nghệ in")
-            lines.append("- **Partners:** Đối tác fulfillment")
+            lines.append("**Diễn giải tiêu chí so sánh:**")
+            lines.append("- Location: Địa điểm fulfilment")
+            lines.append("- Processing: Thời gian xử lý")
+            lines.append("- Material: Chất liệu sản phẩm")
+            lines.append("- Print Method: Công nghệ in")
+            lines.append("- Partners: Đối tác fulfilment")
 
         return "\n".join([x for x in lines if x != ""])
 
     # ── Check stock intent ──
     if intent == "check_stock":
         alt_list = "\n".join(
-            f"- **{p.get('name','?')}** (`{p.get('short_code','?')}`): {p.get('location','?')} | {p.get('processing_time','?')} | {p.get('inventory_status','unknown')}"
+            f"- {p.get('name','?')} (`{p.get('short_code','?')}`): {p.get('location','?')} | {p.get('processing_time','?')} | {p.get('inventory_status','unknown')}"
             for p in alternatives[:3]
         )
         oos_list = ", ".join(out_of_stock_ids[:10]) if out_of_stock_ids else "không xác định"
         return (
-            f"## 📦 Kiểm tra tồn kho\n\n"
-            f"Đã kiểm tra catalog BurgerPrints.\n\n"
-            f"- Out of stock IDs: {oos_list}\n\n"
-            + (f"**Sản phẩm thay thế được đề xuất:**\n{alt_list}" if alt_list else "Không tìm thấy sản phẩm thay thế phù hợp.")
-            + "\n\n💡 Bạn muốn xem chi tiết sản phẩm nào?"
+            f"## Kết Quả Kiểm Tra Tồn Kho\n\n"
+            f"Đã hoàn tất kiểm tra catalog BurgerPrints.\n\n"
+            f"- Danh sách mã đang hết hàng: {oos_list}\n\n"
+            + (f"**Sản phẩm thay thế đề xuất:**\n{alt_list}" if alt_list else "Không tìm thấy sản phẩm thay thế phù hợp.")
+            + "\n\nNếu cần, tôi có thể tiếp tục phân tích chi tiết từng sản phẩm thay thế."
         )
 
     # ── Recommend product intent (default) ──
     if not scores:
-        return "❌ Không tìm thấy sản phẩm phù hợp với yêu cầu. Vui lòng thử với tiêu chí khác."
+        return "Không tìm thấy sản phẩm phù hợp với yêu cầu hiện tại. Vui lòng thử lại với tiêu chí khác."
 
     list_all = criteria.get("list_all", False)
     requested_count = _extract_requested_count(query)
@@ -1171,23 +1356,23 @@ def _build_deterministic_response(
     filters_line = _format_filters(criteria)
 
     # Header theo query
-    loc_label = f"thị trường **{loc}**" if loc else "nhu cầu của bạn"
-    fast_label = f", giao hàng trong **≤{max_lead} ngày**" if max_lead < 999 else ""
-    header = f"## 🔍 Gợi ý sản phẩm phù hợp cho {loc_label}{fast_label}\n\nMình vừa truy xuất catalog theo yêu cầu: *\"{query}\"*"
+    loc_label = f"thị trường {loc}" if loc else "nhu cầu hiện tại"
+    fast_label = f", thời gian xử lý không vượt quá {max_lead} ngày" if max_lead < 999 else ""
+    header = f"## Đề Xuất Sản Phẩm Phù Hợp Cho {loc_label}{fast_label}\n\nYêu cầu đã tiếp nhận: *\"{query}\"*"
     if header_notes:
         header += "\n" + "\n".join(header_notes)
     if filters_line:
-        header += f"\n\n*Bộ lọc đang áp dụng:* {filters_line}"
+        header += f"\n\nTiêu chí đang áp dụng: {filters_line}"
     header += "\n"
 
     # ── List All Mode: bảng markdown đầy đủ ──
     if list_all:
         lines = [
             header,
-            f"*Tìm thấy **{len(scores)}** sản phẩm phù hợp, sắp xếp theo điểm score*",
+            f"Tìm thấy **{len(scores)}** sản phẩm phù hợp, đã sắp xếp theo điểm đánh giá tổng hợp.",
             "",
-            "| # | Tên sản phẩm | SKU | Score | Location | Processing | Print | Tồn kho | Giá bán đề xuất |",
-            "|---|-------------|-----|-------|----------|------------|-------|---------|----------------|",
+            "| STT | Tên sản phẩm | SKU | Điểm | Khu vực | Xử lý | In ấn | Tồn kho | Giá bán gợi ý |",
+            "|---|---|---|---|---|---|---|---|---|",
         ]
         for rank, item in enumerate(scores, 1):
             p = item["product"]
@@ -1199,21 +1384,20 @@ def _build_deterministic_response(
             pm = p.get('print_method', '?')
             inv = p.get('inventory_status', 'unknown')
             price = p.get('suggested_selling_price', 0)
-            inv_icon = '✅' if inv == 'available' else '❌' if inv == 'out_of_stock' else '❓'
             price_str = f"${price:.2f}" if price else '—'
             lines.append(
                 f"| {rank} | **{name}** | `{sku}` | **{score:.0f}** | "
-                f"{loc_val} | {proc} | {pm} | {inv_icon} {inv} | {price_str} |"
+                f"{loc_val} | {proc} | {pm} | {inv} | {price_str} |"
             )
         lines.append("")
-        lines.append(f"💡 **Bạn muốn phân tích chi tiết sản phẩm nào?** Hỏi: `Phân tích chi tiết [tên SP]` hoặc `So sánh [SP1] với [SP2]`")
+        lines.append("Nếu cần, tôi có thể phân tích chi tiết từng sản phẩm hoặc so sánh trực tiếp giữa hai mã cụ thể.")
         return "\n".join(lines)
 
     if requested_count >= 4:
         n = min(requested_count, len(scores))
         lines = [
             header,
-            f"*Mình chọn ra **{n}** sản phẩm đáng thử nhất (xếp theo score):*",
+            f"Dưới đây là **{n}** sản phẩm phù hợp nhất, được xếp theo điểm đánh giá tổng hợp:",
             "",
         ]
         for rank, item in enumerate(scores[:n], 1):
@@ -1233,51 +1417,86 @@ def _build_deterministic_response(
             if partners_cnt:
                 meta.append(f"{partners_cnt} partner")
             meta_str = " · ".join(meta)
-            lines.append(f"{rank}) **{name}** (`{sku}`) — **{score:.0f}/100**")
-            lines.append(f"   - {meta_str} · Giá gợi ý: **{price_str}**")
+            lines.append(f"{rank}. **{name}** (`{sku}`)")
+            lines.append(f"- Điểm đánh giá: **{score:.0f}/100**")
+            lines.append(f"- Thông tin chính: {meta_str}")
+            lines.append(f"- Giá bán gợi ý: **{price_str}**")
+            lines.append("")
 
         reason_section = ""
         if reasons:
-            reason_section = "\n\n**✅ Lý do đề xuất sản phẩm #1:**\n" + "\n".join(f"- {r}" for r in reasons)
+            reason_section = "\n**Cơ Sở Đề Xuất Sản Phẩm Đứng Đầu:**\n" + "\n".join(f"- {r}" for r in reasons)
 
-        cta = "\n\n💬 Bạn muốn mình ưu tiên **dòng rẻ dễ test** hay **dòng premium** trong list này? (Mình sẽ rút tiếp còn 5 mẫu phù hợp nhất)."
+        cta = "\n\nNếu cần, tôi có thể tiếp tục rút gọn danh sách xuống 5 mẫu theo định hướng giá phổ thông dễ mở rộng hoặc phân khúc premium."
         return "\n".join(lines) + reason_section + cta
 
     # ── Top 3 Mode: card chi tiết (mặc định) ──
-    product_lines = []
+    product_lines = ["", "**Danh Sách Đề Xuất Hàng Đầu:**", ""]
     for rank, item in enumerate(scores[:3], 1):
         p = item["product"]
         score = item["score"]
-        medals = ["🥇", "🥈", "🥉"]
-        medal = medals[rank - 1]
-        product_lines.append(f"{medal} **{p.get('name', 'N/A')}** (`{p.get('short_code', 'N/A')}`) — **{score:.0f}/100**")
-        product_lines.append(f"   - 📍 {p.get('location', '?')} · ⏱️ {p.get('processing_time', '?')} · 🖨️ {p.get('print_method', '?')}")
-        product_lines.append(f"   - 💰 Giá gợi ý: **${p.get('suggested_selling_price', 0):.2f}** · Lợi nhuận/đơn: **${p.get('profit', 0):.2f}** · ROI: **{p.get('roi', 0):.0f}%**")
-        product_lines.append(f"   - 🎯 Hợp với: **{p.get('recommended_audience', 'General Gift Buyers')}**")
+        product_lines.append(f"{rank}. **{p.get('name', 'N/A')}** (`{p.get('short_code', 'N/A')}`)")
+        product_lines.append(f"- Điểm đánh giá: **{score:.0f}/100**")
+        product_lines.append(
+            f"- Thông tin vận hành: {p.get('location', '?')} | {p.get('processing_time', '?')} | {p.get('print_method', '?')}"
+        )
+        product_lines.append(
+            f"- Giá bán gợi ý: **${p.get('suggested_selling_price', 0):.2f}** | "
+            f"Lợi nhuận ước tính: **${p.get('profit', 0):.2f}/đơn** | ROI: **{p.get('roi', 0):.0f}%**"
+        )
+        product_lines.append(f"- Tệp khách hàng phù hợp: **{p.get('recommended_audience', 'General Gift Buyers')}**")
         risks = p.get("risks") or []
         if risks:
-            product_lines.append(f"   - ⚠️ Lưu ý: {', '.join(risks[:3])}")
+            risk_texts = []
+            for risk in risks[:3]:
+                translated = _translate_risk_text(risk)
+                if translated:
+                    risk_texts.append(translated)
+            if risk_texts:
+                product_lines.append(f"- Lưu ý: {' '.join(risk_texts)}")
+        product_lines.append("")
 
     # Hiển thị số sản phẩm còn lại nếu có nhiều hơn 3
     more_section = ""
     if len(scores) > 3:
-        more_section = f"\n\nNếu bạn muốn mình liệt kê nhiều hơn, cứ nhắn: **\"cho tôi 10 sản phẩm\"**, **\"cho tôi 15 sản phẩm\"** hoặc **\"list all\"**."
+        more_section = (
+            "\nNếu cần mở rộng danh sách, bạn có thể yêu cầu thêm theo các lựa chọn như "
+            "`cho tôi 10 sản phẩm`, `cho tôi 15 sản phẩm` hoặc `list all`."
+        )
 
     # Lý do chọn #1
     reason_section = ""
     if reasons:
-        reason_section = "\n\n**✅ Lý do đề xuất sản phẩm #1:**\n" + "\n".join(f"- {r}" for r in reasons)
+        reason_section = "\n**Cơ Sở Đề Xuất Sản Phẩm Đứng Đầu:**\n" + "\n".join(f"- {r}" for r in reasons)
 
     top_product = scores[0]["product"] if scores else {}
     partner_prices = top_product.get("partner_prices") if isinstance(top_product, dict) else {}
     partner_price_max = top_product.get("partner_price_max") if isinstance(top_product, dict) else {}
     partner_best_variant = top_product.get("partner_best_variant") if isinstance(top_product, dict) else {}
+    partner_summary = top_product.get("partner_summary") if isinstance(top_product, dict) else []
 
-    max_price_constraint = _as_float(criteria.get("max_price", 9999.0), 9999.0)
+    max_price_constraint = _as_float(criteria.get("base_cost_max", criteria.get("max_price", 9999.0)), 9999.0)
     has_price_constraint = 0 < max_price_constraint < 9999.0
 
     best_partner = ""
     best_partner_price = None
+    selected_partner_summary = None
+    if isinstance(partner_summary, list) and partner_summary:
+        ranked_rows = []
+        for row in partner_summary:
+            if not isinstance(row, dict):
+                continue
+            name = str(row.get("partner") or "").strip()
+            price_min = _as_float(row.get("price_min"), 0.0)
+            color_count = int(row.get("color_count", 0) or 0)
+            if not name or price_min <= 0:
+                continue
+            ranked_rows.append((name, price_min, color_count, row))
+        ranked_rows.sort(key=lambda item: (-item[2], item[1], item[0]))
+        if ranked_rows:
+            eligible = [x for x in ranked_rows if (not has_price_constraint) or (x[1] <= max_price_constraint)]
+            chosen = eligible[0] if eligible else ranked_rows[0]
+            best_partner, best_partner_price, _, selected_partner_summary = chosen
     if isinstance(partner_prices, dict) and partner_prices:
         pairs = []
         for partner_name, partner_price in partner_prices.items():
@@ -1287,7 +1506,7 @@ def _build_deterministic_response(
                 continue
             pairs.append((name, val))
         pairs.sort(key=lambda x: x[1])
-        if pairs:
+        if pairs and not best_partner:
             eligible = [x for x in pairs if (not has_price_constraint) or (x[1] <= max_price_constraint)]
             chosen = eligible[0] if eligible else pairs[0]
             best_partner, best_partner_price = chosen
@@ -1306,13 +1525,18 @@ def _build_deterministic_response(
             v = partner_best_variant.get(best_partner)
             if isinstance(v, dict) and v:
                 variant = v
+        if selected_partner_summary is None and isinstance(partner_summary, list):
+            for row in partner_summary:
+                if isinstance(row, dict) and str(row.get("partner") or "").strip() == best_partner:
+                    selected_partner_summary = row
+                    break
 
         price_note = f"${best_partner_price:.2f}" if best_partner_price is not None else "—"
         range_note = ""
         if partner_max is not None and best_partner_price is not None and partner_max > (best_partner_price + 0.0001):
             range_note = f"${best_partner_price:.2f}–${partner_max:.2f}"
 
-        lines = ["\n\n**🏭 Gợi ý xưởng & SKU (chốt nhanh):**", f"- Xưởng: **{best_partner}**"]
+        lines = ["\n**Gợi Ý Partner Fulfilment:**", f"- Partner đề xuất: **{best_partner}**"]
 
         if variant and best_partner_price is not None:
             variant_sku = (variant.get("sku") or "").strip()
@@ -1324,23 +1548,36 @@ def _build_deterministic_response(
             if color:
                 bits.append(f"màu **{color}**")
             variant_desc = ", ".join(bits) if bits else "biến thể rẻ nhất"
-            lines.append(f"- Base cost (min): **{price_note}** ({variant_desc})")
+            lines.append(f"- Giá gốc tối thiểu: **{price_note}** ({variant_desc})")
             if range_note:
-                lines.append(f"- Range theo xưởng: **{range_note}**")
+                lines.append(f"- Khoảng giá theo partner: **{range_note}**")
             if variant_sku:
-                lines.append(f"- Variant SKU: `{variant_sku}`")
+                lines.append(f"- Mã biến thể: `{variant_sku}`")
         else:
-            lines.append(f"- Base cost (min): **{price_note}**")
+            lines.append(f"- Giá gốc tối thiểu: **{price_note}**")
             if range_note:
-                lines.append(f"- Range theo xưởng: **{range_note}**")
+                lines.append(f"- Khoảng giá theo partner: **{range_note}**")
 
-        lines.append(f"- Product SKU: `{sku_code}`")
+        lines.append(f"- Mã sản phẩm: `{sku_code}`")
         if range_note:
-            lines.append("- Lưu ý: giá có thể tăng theo size/color (nên bạn có thể thấy mức cao hơn như $9.50 ở size lớn).")
+            lines.append("- Lưu ý: giá có thể thay đổi theo size hoặc màu sắc.")
 
+        if isinstance(selected_partner_summary, dict):
+            color_count = int(selected_partner_summary.get("color_count", 0) or 0)
+            size_count = int(selected_partner_summary.get("size_count", 0) or 0)
+            markets = [str(x).strip() for x in (selected_partner_summary.get("markets") or []) if str(x).strip()]
+            if color_count > 0:
+                lines.append(f"- Supported colors: **{color_count}**")
+            if size_count > 0:
+                lines.append(f"- Supported sizes: **{size_count}**")
+            if markets:
+                lines.append(f"- Served market/location: **{', '.join(markets)}**")
         factory_section = "\n".join(lines)
 
     # CTA
-    cta = "\n\n💬 Bạn muốn mình chốt **5 mẫu best-seller** theo hướng **giá rẻ dễ scale** hay **premium bán giá cao**?"
+    cta = (
+        "\n\nNếu cần, tôi có thể tiếp tục chọn lọc 5 mẫu tiềm năng nhất theo một trong hai định hướng: "
+        "**giá phổ thông dễ mở rộng** hoặc **phân khúc premium giá trị cao**."
+    )
 
     return header + "\n".join(product_lines) + more_section + reason_section + factory_section + cta

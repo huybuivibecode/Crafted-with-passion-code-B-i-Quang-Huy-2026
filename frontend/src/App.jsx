@@ -35,37 +35,37 @@ function parseProcessingMin(product) {
 
 function deriveFactoriesFromProducts(products) {
   const byName = new Map()
-  ;(products || []).forEach((p) => {
-    const partners = Array.isArray(p?.partners) ? p.partners : []
-    partners.forEach((partnerNameRaw) => {
-      const key = String(partnerNameRaw || '').trim()
-      if (!key) return
-      const prev = byName.get(key) || {
-        name: key,
-        minBase: Infinity,
-        avgScoreSum: 0,
-        avgScoreCount: 0,
-        processingMin: Infinity,
-        processingLabel: null,
-        locations: new Set(),
-      }
-      const priceMin = safeNumber(p?.price_min)
-      if (priceMin !== null) prev.minBase = Math.min(prev.minBase, priceMin)
-      const score = safeNumber(p?.score)
-      if (score !== null) {
-        prev.avgScoreSum += score
-        prev.avgScoreCount += 1
-      }
-      const pm = parseProcessingMin(p)
-      if (pm !== null && pm < prev.processingMin) {
-        prev.processingMin = pm
-        prev.processingLabel = p?.processing_time || `${pm}d`
-      }
-      const loc = String(p?.location || '').trim()
-      if (loc) prev.locations.add(loc)
-      byName.set(key, prev)
+    ; (products || []).forEach((p) => {
+      const partners = Array.isArray(p?.partners) ? p.partners : []
+      partners.forEach((partnerNameRaw) => {
+        const key = String(partnerNameRaw || '').trim()
+        if (!key) return
+        const prev = byName.get(key) || {
+          name: key,
+          minBase: Infinity,
+          avgScoreSum: 0,
+          avgScoreCount: 0,
+          processingMin: Infinity,
+          processingLabel: null,
+          locations: new Set(),
+        }
+        const priceMin = safeNumber(p?.price_min)
+        if (priceMin !== null) prev.minBase = Math.min(prev.minBase, priceMin)
+        const score = safeNumber(p?.score)
+        if (score !== null) {
+          prev.avgScoreSum += score
+          prev.avgScoreCount += 1
+        }
+        const pm = parseProcessingMin(p)
+        if (pm !== null && pm < prev.processingMin) {
+          prev.processingMin = pm
+          prev.processingLabel = p?.processing_time || `${pm}d`
+        }
+        const loc = String(p?.location || '').trim()
+        if (loc) prev.locations.add(loc)
+        byName.set(key, prev)
+      })
     })
-  })
 
   const list = Array.from(byName.values()).map((f) => {
     const avg = f.avgScoreCount ? f.avgScoreSum / f.avgScoreCount : null
@@ -172,6 +172,7 @@ function App() {
   const [partnerColorsMap, setPartnerColorsMap] = useState({})
   const [partnerColorsLoading, setPartnerColorsLoading] = useState(false)
   const [colorPreviewHex, setColorPreviewHex] = useState('')
+  const [showTip, setShowTip] = useState(true)
 
   const partnerColorCacheRef = useRef({})
 
@@ -543,6 +544,31 @@ function App() {
               </div>
             </header>
 
+            {showTip ? (
+              <div className="mx-4 mt-3 flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-800 shadow-sm">
+                <i className="fa-solid fa-lightbulb text-amber-500 mt-0.5 shrink-0"></i>
+                <span className="flex-1 leading-relaxed">
+                  <span className="font-semibold">Mẹo để đảm bảo độ chính xác:</span> Nhấn{' '}
+                  <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-amber-100 border border-amber-300 font-semibold">
+                    <i className="fa-solid fa-arrows-rotate text-[10px]"></i> Refresh
+                  </span>{' '}
+                  để cập nhật dữ liệu catalog mới nhất, sau đó nhấn{' '}
+                  <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-amber-100 border border-amber-300 font-semibold">
+                    <i className="fa-solid fa-plus text-[10px]"></i> New
+                  </span>{' '}
+                  để tạo phiên chat mới trước khi hỏi.
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setShowTip(false)}
+                  className="shrink-0 text-amber-400 hover:text-amber-600 transition ml-1"
+                  title="Đóng"
+                >
+                  <i className="fa-solid fa-xmark"></i>
+                </button>
+              </div>
+            ) : null}
+
             <div
               id="bp-chat-scroll"
               ref={scrollRef}
@@ -790,9 +816,8 @@ function App() {
               <div className="p-4">
                 <div className="flex flex-col gap-3">
                   <div className="flex flex-wrap gap-2" id="composer-suggestions">
-                    <button className="composer-chip px-3 py-2 rounded-xl bg-appBg border border-black/10 text-xs font-semibold hover:bg-white transition" onClick={() => handleSend('Gợi ý 3 sản phẩm POD dễ bán tốt nhất')} type="button">Gợi ý sản phẩm</button>
-                    <button className="composer-chip px-3 py-2 rounded-xl bg-appBg border border-black/10 text-xs font-semibold hover:bg-white transition" onClick={() => handleSend('So sánh Bella + Canvas 3001 với Gildan 5000')} type="button">So sánh 2 sản phẩm</button>
-                    <button className="composer-chip px-3 py-2 rounded-xl bg-appBg border border-black/10 text-xs font-semibold hover:bg-white transition" onClick={() => handleSend('Tìm sản phẩm màu đen, partner Spire, dưới $12, ship US')} type="button">Lọc theo partner & giá</button>
+                    <button className="composer-chip px-3 py-2 rounded-xl bg-appBg border border-black/10 text-xs font-semibold hover:bg-white transition" onClick={() => handleSend('So sánh các factory/partner theo giá, thời gian sản xuất và chất lượng')} type="button">Factory Comparison</button>
+                    <button className="composer-chip px-3 py-2 rounded-xl bg-appBg border border-black/10 text-xs font-semibold hover:bg-white transition" onClick={() => handleSend('Gợi ý sản phẩm POD phù hợp nhất cho tôi')} type="button">Product recommend</button>
                   </div>
 
                   <div className="flex items-end gap-2">
@@ -859,10 +884,6 @@ function App() {
           >
             <header className="px-5 pt-5 pb-4 border-b border-black/5 bg-white">
               <div className="flex items-start justify-between gap-3">
-                <div>
-                  <h2 className="text-lg sm:text-xl font-extrabold tracking-tight">Factory Comparison</h2>
-                  <p className={`${isCanvasCompact ? 'hidden' : 'block'} text-sm text-ink/60 mt-1`}>So sánh theo partner/factory, dựa trên dữ liệu truy xuất mới nhất.</p>
-                </div>
                 <div className="hidden sm:flex items-center gap-2">
                   <span className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-appBg text-ink/70 text-xs font-semibold border border-black/5">
                     <i className="fa-solid fa-shield-halved text-brandOrange"></i> Data-backed picks
