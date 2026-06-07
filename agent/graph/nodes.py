@@ -6,12 +6,26 @@ import json
 import os
 import re
 import logging
+import queue
+import threading
 from typing import List
 
 from django.conf import settings
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_core.messages import SystemMessage, HumanMessage
 from pydantic import BaseModel, Field
+
+_active_streams = {}
+_streams_lock = threading.Lock()
+
+def register_stream_queue(session_id: str, q: queue.Queue):
+    with _streams_lock:
+        _active_streams[session_id] = q
+
+def unregister_stream_queue(session_id: str):
+    with _streams_lock:
+        _active_streams.pop(session_id, None)
+
 
 from agent.graph.state import AgentState
 from agent.services.api_knowledge import get_api_knowledge

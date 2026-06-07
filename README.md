@@ -1,5 +1,7 @@
 # BurgerPrintsAgent - AI Fulfillment Advisor for POD Sellers
 
+Live Demo: [http://bp1.zorinlab.space](http://bp1.zorinlab.space)   
+
 BurgerPrintsAgent là một trợ lý ảo AI thông minh được phát triển để hỗ trợ các seller bán hàng Print-On-Demand (POD) trên nền tảng BurgerPrints. Ứng dụng giúp tìm kiếm, so sánh sản phẩm tối ưu, đối chiếu chất lượng và giá cả giữa các factory/partner, theo dõi tồn kho và chuẩn bị đơn hàng tự động.
 
 ---
