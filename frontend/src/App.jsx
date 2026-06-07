@@ -544,30 +544,7 @@ function App() {
               </div>
             </header>
 
-            {showTip ? (
-              <div className="mx-4 mt-3 flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-800 shadow-sm">
-                <i className="fa-solid fa-lightbulb text-amber-500 mt-0.5 shrink-0"></i>
-                <span className="flex-1 leading-relaxed">
-                  <span className="font-semibold">Mẹo để đảm bảo độ chính xác:</span> Nhấn{' '}
-                  <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-amber-100 border border-amber-300 font-semibold">
-                    <i className="fa-solid fa-arrows-rotate text-[10px]"></i> Refresh
-                  </span>{' '}
-                  để cập nhật dữ liệu catalog mới nhất, sau đó nhấn{' '}
-                  <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-amber-100 border border-amber-300 font-semibold">
-                    <i className="fa-solid fa-plus text-[10px]"></i> New
-                  </span>{' '}
-                  để tạo phiên chat mới trước khi hỏi.
-                </span>
-                <button
-                  type="button"
-                  onClick={() => setShowTip(false)}
-                  className="shrink-0 text-amber-400 hover:text-amber-600 transition ml-1"
-                  title="Đóng"
-                >
-                  <i className="fa-solid fa-xmark"></i>
-                </button>
-              </div>
-            ) : null}
+
 
             <div
               id="bp-chat-scroll"
@@ -642,6 +619,31 @@ function App() {
                       })}
                     </div>
                   </div>
+
+                  {showTip ? (
+                    <div className="mt-6 mx-auto max-w-2xl flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-800 shadow-sm">
+                      <i className="fa-solid fa-lightbulb text-amber-500 mt-0.5 shrink-0"></i>
+                      <span className="flex-1 leading-relaxed text-left">
+                        <span className="font-semibold">Mẹo để đảm bảo độ chính xác:</span> Nhấn{' '}
+                        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-amber-100 border border-amber-300 font-semibold">
+                          <i className="fa-solid fa-arrows-rotate text-[10px]"></i> Refresh
+                        </span>{' '}
+                        để cập nhật dữ liệu catalog mới nhất, sau đó nhấn{' '}
+                        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-amber-100 border border-amber-300 font-semibold">
+                          <i className="fa-solid fa-plus text-[10px]"></i> New
+                        </span>{' '}
+                        để tạo phiên chat mới trước khi hỏi.
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => setShowTip(false)}
+                        className="shrink-0 text-amber-400 hover:text-amber-600 transition ml-1"
+                        title="Đóng"
+                      >
+                        <i className="fa-solid fa-xmark"></i>
+                      </button>
+                    </div>
+                  ) : null}
                 </section>
               ) : null}
 

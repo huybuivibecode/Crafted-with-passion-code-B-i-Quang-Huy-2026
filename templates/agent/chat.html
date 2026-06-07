@@ -54,24 +54,6 @@
                 </div>
             </header>
 
-            <!-- Tip Banner -->
-            <div id="bp-tip-banner" class="mx-4 mt-3 flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-800 shadow-sm">
-                <i class="fa-solid fa-lightbulb text-amber-500 mt-0.5 shrink-0"></i>
-                <span class="flex-1 leading-relaxed">
-                    <span class="font-semibold">Mẹo để đảm bảo độ chính xác:</span> Nhấn
-                    <span class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-amber-100 border border-amber-300 font-semibold">
-                        <i class="fa-solid fa-arrows-rotate text-[10px]"></i> Refresh
-                    </span>
-                    để cập nhật dữ liệu catalog mới nhất, sau đó nhấn
-                    <span class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-amber-100 border border-amber-300 font-semibold">
-                        <i class="fa-solid fa-plus text-[10px]"></i> New
-                    </span>
-                    để tạo phiên chat mới trước khi hỏi.
-                </span>
-                <button type="button" onclick="document.getElementById('bp-tip-banner').style.display='none'" class="shrink-0 text-amber-400 hover:text-amber-600 transition ml-1" title="Đóng">
-                    <i class="fa-solid fa-xmark"></i>
-                </button>
-            </div>
 
             <div id="bp-chat-scroll" class="flex-1 overflow-y-auto nice-scrollbar px-5 py-5 bg-gradient-to-b from-white to-appBg/60">
                 <!-- =================================================
@@ -162,6 +144,25 @@
                                 </div>
                             </button>
                         </div>
+                    </div>
+
+                    <!-- Tip Banner — chỉ hiện trên landing page -->
+                    <div id="bp-tip-banner" class="mt-6 mx-auto max-w-2xl flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-800 shadow-sm">
+                        <i class="fa-solid fa-lightbulb text-amber-500 mt-0.5 shrink-0"></i>
+                        <span class="flex-1 leading-relaxed text-left">
+                            <span class="font-semibold">Mẹo để đảm bảo độ chính xác:</span> Nhấn
+                            <span class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-amber-100 border border-amber-300 font-semibold">
+                                <i class="fa-solid fa-arrows-rotate text-[10px]"></i> Refresh
+                            </span>
+                            để cập nhật dữ liệu catalog mới nhất, sau đó nhấn
+                            <span class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-amber-100 border border-amber-300 font-semibold">
+                                <i class="fa-solid fa-plus text-[10px]"></i> New
+                            </span>
+                            để tạo phiên chat mới trước khi hỏi.
+                        </span>
+                        <button type="button" onclick="document.getElementById('bp-tip-banner').style.display='none'" class="shrink-0 text-amber-400 hover:text-amber-600 transition ml-1" title="Đóng">
+                            <i class="fa-solid fa-xmark"></i>
+                        </button>
                     </div>
                 </section>
 
