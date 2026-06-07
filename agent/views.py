@@ -81,8 +81,6 @@ class ChatAPIView(APIView):
         intent = result.get("intent", "")
         scores_raw = result.get("scores", [])
 
-        # Khi list_all → gửi tất cả về FE (tối đa 200 để tránh quá tải)
-        # Khi không → chỉ gửi top 5 cho UI product cards
         criteria = result.get("extracted_criteria") or {}
         list_all = bool(criteria.get("list_all", False))
         requested_count = 0
@@ -179,7 +177,6 @@ class BalanceAPIView(APIView):
 
     def get(self, request):
         try:
-            # Kiểm tra xác thực API key
             auth_data = bp_api.get_authenticated()
             is_valid = auth_data.get("is_success", False)
 
@@ -189,7 +186,6 @@ class BalanceAPIView(APIView):
                 "message": auth_data.get("message", ""),
             }
 
-            # Nếu auth OK, lấy thêm balance
             if is_valid:
                 try:
                     balance_data = bp_api.get_balance()
@@ -206,6 +202,10 @@ class BalanceAPIView(APIView):
             )
 
 
+# ---------------------------------------------------------------------------
+# Order API Views
+# ---------------------------------------------------------------------------
+
 class OrderSubmitAPIView(APIView):
     """
     POST /api/order/ - Tạo đơn hàng thực sự qua BurgerPrints API
@@ -220,7 +220,6 @@ class OrderSubmitAPIView(APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        # Validate minimal required fields
         required_keys = ["shipping", "items"]
         missing = [k for k in required_keys if k not in payload]
         if missing:
@@ -231,14 +230,80 @@ class OrderSubmitAPIView(APIView):
 
         try:
             result = bp_api.create_order(payload)
-            return Response({
-                "success": True,
-                "order": result,
-            })
+            return Response({"success": True, "order": result})
         except Exception as e:
             logger.error(f"OrderSubmitAPIView error: {e}")
             return Response(
                 {"error": f"Không thể tạo đơn hàng: {str(e)}"},
+                status=status.HTTP_502_BAD_GATEWAY,
+            )
+
+
+class OrderListAPIView(APIView):
+    """GET /api/orders/ - Danh sách đơn hàng"""
+
+    def get(self, request):
+        page = int(request.query_params.get("page", 1))
+        limit = int(request.query_params.get("limit", 20))
+        try:
+            result = bp_api.get_orders(page=page, limit=limit)
+            return Response(result)
+        except Exception as e:
+            logger.error(f"OrderListAPIView error: {e}")
+            return Response(
+                {"error": f"Không thể lấy danh sách đơn hàng: {str(e)}"},
+                status=status.HTTP_502_BAD_GATEWAY,
+            )
+
+
+class OrderDetailAPIView(APIView):
+    """
+    GET    /api/orders/<order_id>/ - Chi tiết đơn hàng
+    DELETE /api/orders/<order_id>/ - Xoá đơn hàng (chỉ unpaid)
+    """
+
+    def get(self, request, order_id):
+        try:
+            result = bp_api.get_order_detail(order_id)
+            return Response(result)
+        except Exception as e:
+            logger.error(f"OrderDetailAPIView.get error: {e}")
+            return Response(
+                {"error": f"Không thể lấy chi tiết đơn hàng: {str(e)}"},
+                status=status.HTTP_502_BAD_GATEWAY,
+            )
+
+    def delete(self, request, order_id):
+        try:
+            result = bp_api.delete_order(order_id)
+            return Response(result)
+        except Exception as e:
+            logger.error(f"OrderDetailAPIView.delete error: {e}")
+            return Response(
+                {"error": f"Không thể xóa đơn hàng: {str(e)}"},
+                status=status.HTTP_502_BAD_GATEWAY,
+            )
+
+
+class OrderChargeAPIView(APIView):
+    """POST /api/orders/charge/ - Thanh toán đơn hàng"""
+
+    def post(self, request):
+        order_ids = request.data.get("order_ids", [])
+        if not order_ids:
+            return Response(
+                {"error": "order_ids không được để trống"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if isinstance(order_ids, str):
+            order_ids = [order_ids]
+        try:
+            result = bp_api.charge_order(order_ids)
+            return Response(result)
+        except Exception as e:
+            logger.error(f"OrderChargeAPIView error: {e}")
+            return Response(
+                {"error": f"Không thể charge đơn hàng: {str(e)}"},
                 status=status.HTTP_502_BAD_GATEWAY,
             )
 
@@ -277,6 +342,13 @@ class CacheStatsAPIView(APIView):
         invalidate_products_cache()
         invalidate_oos_cache()
         return Response({"message": "Cache đã được xoá. Catalog sẽ được tải lại từ BurgerPrints API."})
+
+
+class GraphDefinitionAPIView(APIView):
+    """GET /api/graph-definition/ - Graph structure for visualization"""
+
+    def get(self, request):
+        return Response(GRAPH_DEFINITION)
 
 
 # ---------------------------------------------------------------------------
@@ -388,8 +460,8 @@ def _build_follow_ups(intent: str, query: str, products: list, winner: dict, alt
             if alternatives:
                 suggestions.append(f"Find a similar alternative to {alternatives[0].get('name', 'this product')}")
             suggestions.append("Filter in-stock products by partner and location")
-        elif intent == "create_order":
-            suggestions.append("Check the status of the order I just created")
+        elif intent in ("create_order", "list_orders", "order_detail"):
+            suggestions.append("Check my order list")
             suggestions.append("Find more products to add to the order")
         else:
             suggestions.extend([
@@ -414,8 +486,8 @@ def _build_follow_ups(intent: str, query: str, products: list, winner: dict, alt
             if alternatives:
                 suggestions.append(f"Tìm sản phẩm thay thế giống {alternatives[0].get('name', 'sản phẩm này')}")
             suggestions.append("Lọc sản phẩm còn hàng theo partner và location")
-        elif intent == "create_order":
-            suggestions.append("Kiểm tra trạng thái đơn hàng vừa tạo")
+        elif intent in ("create_order", "list_orders", "order_detail"):
+            suggestions.append("Xem danh sách đơn hàng của tôi")
             suggestions.append("Tìm thêm sản phẩm để thêm vào đơn")
         else:
             suggestions.extend([
@@ -432,10 +504,3 @@ def _build_follow_ups(intent: str, query: str, products: list, winner: dict, alt
             seen.add(key)
             unique.append(item)
     return unique[:4]
-
-
-class GraphDefinitionAPIView(APIView):
-    """GET /api/graph-definition/ - Graph structure for visualization"""
-
-    def get(self, request):
-        return Response(GRAPH_DEFINITION)

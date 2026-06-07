@@ -41,8 +41,13 @@ class IntentCriteria(BaseModel):
     intent: str = Field(
         description=(
             "One of: recommend_product | compare_product | check_stock | create_order "
+            "| list_orders | order_detail | delete_order | charge_order "
             "| catalog_info | product_detail_info | general_inquiry | other. "
-            "catalog_info: hỏi về thông tin catalog (partner nào có, loại sản phẩm, giá, màu, location, ...)"
+            "catalog_info: hỏi về thông tin catalog (partner nào có, loại sản phẩm, giá, màu, location, ...). "
+            "list_orders: xem danh sách đơn hàng. "
+            "order_detail: xem chi tiết một đơn hàng cụ thể. "
+            "delete_order: xóa đơn hàng (chỉ khi unpaid). "
+            "charge_order: thanh toán đơn hàng."
         )
     )
     catalog_query_type: str = Field(
@@ -74,6 +79,7 @@ class IntentCriteria(BaseModel):
     print_tech: str = Field(default="", description="Print technology preference")
     quantity: int = Field(default=0, description="Quantity if mentioned")
     size_preference: str = Field(default="", description="Size preference if mentioned (S, M, L, XL, ...)")
+    order_id: str = Field(default="", description="Order ID nếu user đề cập đến một đơn hàng cụ thể (ví dụ: A28756-CT-3161831)")
     list_all: bool = Field(
         default=False,
         description=(
@@ -323,12 +329,30 @@ CÁC INTENT VÀ KHI NÀO DÙNG:
    - "Bella + Canvas 3001 còn stock không?"
    - "Hết hàng chưa?"
 
-4. **create_order**: Tạo / đặt đơn hàng
+4. **create_order**: Tạo / đặt đơn hàng mới
    - "Tạo đơn hàng cho tôi"
    - "Đặt 2 cái áo size M, ship về..."
    - "Tôi muốn order SKU USG5000"
 
-5. **catalog_info**: Hỏi thông tin về catalog/danh mục (KHÔNG phải gợi ý sản phẩm cụ thể)
+5. **list_orders**: Xem danh sách đơn hàng
+   - "Danh sách đơn hàng của tôi"
+   - "Các đơn hàng gần nhất"
+   - "Show my orders"
+   - "Đơn hàng hiện tại"
+
+6. **order_detail**: Xem chi tiết một đơn hàng cụ thể
+   - "Chi tiết đơn hàng A28756-CT-3161831"
+   - "Order ID ... là gì"
+
+7. **delete_order**: Xóa đơn hàng (chỉ khi unpaid)
+   - "Xóa đơn hàng A28756-..."
+   - "Hủy đơn hàng chưa thanh toán"
+
+8. **charge_order**: Thanh toán đơn hàng
+   - "Thanh toán đơn A28756-..."
+   - "Charge order ..."
+
+9. **catalog_info**: Hỏi thông tin về catalog/danh mục (KHÔNG phải gợi ý sản phẩm cụ thể)
    - "Hiện có những partner nào?" → catalog_query_type: partners
    - "BurgerPrints có những loại sản phẩm gì?" → catalog_query_type: product_types
    - "Có màu sắc nào?" → catalog_query_type: colors
@@ -379,7 +403,8 @@ OUTPUT FORMAT (JSON):
     "shipping_location": "địa_chỉ_giao_hàng",
     "print_tech": "công_nghệ_in",
     "quantity": số_lượng_nếu_có,
-    "size_preference": "size_nếu_có"
+    "size_preference": "size_nếu_có",
+    "order_id": "ID_đơn_hàng_nếu_có"
 }}
 
 VÍ DỤ:
@@ -537,6 +562,14 @@ CHÚ Ý:
             intent = "check_stock"
         elif any(kw in q for kw in ["tạo đơn", "order", "đặt hàng", "mua"]):
             intent = "create_order"
+        elif any(kw in q for kw in ["danh sách đơn", "đơn hàng của tôi", "my orders", "list order", "show order", "xem đơn"]):
+            intent = "list_orders"
+        elif any(kw in q for kw in ["xóa đơn", "hủy đơn", "delete order"]):
+            intent = "delete_order"
+        elif any(kw in q for kw in ["thanh toán đơn", "charge order", "pay order"]):
+            intent = "charge_order"
+        elif any(kw in q for kw in ["chi tiết đơn", "order detail", "order id"]):
+            intent = "order_detail"
         elif any(kw in q for kw in ["tìm", "gợi ý", "recommend", "bán", "muốn", "nên"]):
             intent = "recommend_product"
 
@@ -713,7 +746,8 @@ class OtherTaskManager:
         criteria: Dict[str, Any],
         history: List[Dict[str, Any]] | None = None,
     ) -> Dict[str, Any]:
-        if intent in {"create_order", "product_partner_info", "product_detail_info"}:
+        if intent in {"create_order", "list_orders", "order_detail", "delete_order", "charge_order",
+                   "product_partner_info", "product_detail_info"}:
             return {"use_other": False, "reason": ""}
 
         try:

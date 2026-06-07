@@ -164,13 +164,28 @@ def get_order_tracking(order_id: str) -> dict:
         return resp.json()
 
 
-def charge_order(order_id: str) -> dict:
-    """POST /v2/order/charge - Thanh toán đơn hàng"""
+def charge_order(order_ids: list) -> dict:
+    """POST /v2/order/charge - Thanh toán đơn hàng
+    
+    Args:
+        order_ids: list of order ID strings to charge
+    """
     with httpx.Client(timeout=30) as client:
         resp = client.post(
             f"{BASE_URL}/v2/order/charge",
             headers=_get_headers(),
-            json={"id": order_id},
+            json={"order_ids": order_ids if isinstance(order_ids, list) else [order_ids]},
+        )
+        resp.raise_for_status()
+        return resp.json()
+
+
+def delete_order(order_id: str) -> dict:
+    """DELETE /v2/order/{id} - Xóa đơn hàng (chỉ được khi order ở trạng thái unpaid)"""
+    with httpx.Client(timeout=30) as client:
+        resp = client.delete(
+            f"{BASE_URL}/v2/order/{order_id}",
+            headers=_get_headers(),
         )
         resp.raise_for_status()
         return resp.json()

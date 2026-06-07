@@ -174,6 +174,23 @@ function App() {
   const [colorPreviewHex, setColorPreviewHex] = useState('')
   const [showTip, setShowTip] = useState(true)
 
+  // Canvas tab state
+  const [canvasTab, setCanvasTab] = useState('compare') // 'compare' | 'products' | 'orders'
+
+  // Order state
+  const [orders, setOrders] = useState([])
+  const [ordersLoading, setOrdersLoading] = useState(false)
+  const [ordersError, setOrdersError] = useState('')
+  const [orderDetail, setOrderDetail] = useState(null)
+  const [orderDetailLoading, setOrderDetailLoading] = useState(false)
+  const [orderForm, setOrderForm] = useState({
+    sku: '', quantity: 1, size: 'M',
+    name: '', address: '', city: '', state_: '', country: 'US', postal_code: ''
+  })
+  const [orderSubmitting, setOrderSubmitting] = useState(false)
+  const [orderFormError, setOrderFormError] = useState('')
+  const [orderFormSuccess, setOrderFormSuccess] = useState('')
+
   const partnerColorCacheRef = useRef({})
 
   const isActive = messages.length > 0
@@ -201,6 +218,102 @@ function App() {
     setToast({ visible: true, message, kind })
     window.clearTimeout(showToast._t)
     showToast._t = window.setTimeout(() => setToast((t) => ({ ...t, visible: false })), 2400)
+  }
+
+  async function loadOrders() {
+    setOrdersLoading(true)
+    setOrdersError('')
+    try {
+      const data = await apiFetch('/api/orders/', { method: 'GET' })
+      const list = data?.data || data?.result || []
+      setOrders(Array.isArray(list) ? list : [])
+    } catch (e) {
+      setOrdersError(e.message || 'Không thể tải đơn hàng')
+    } finally {
+      setOrdersLoading(false)
+    }
+  }
+
+  async function loadOrderDetail(orderId) {
+    setOrderDetailLoading(true)
+    try {
+      const data = await apiFetch(`/api/orders/${encodeURIComponent(orderId)}/`, { method: 'GET' })
+      setOrderDetail(data?.data || data)
+    } catch (e) {
+      showToast(`Lỗi: ${e.message}`, 'error')
+    } finally {
+      setOrderDetailLoading(false)
+    }
+  }
+
+  async function deleteOrder(orderId) {
+    if (!confirm(`Xác nhận xóa đơn hàng ${orderId}?`)) return
+    try {
+      await apiFetch(`/api/orders/${encodeURIComponent(orderId)}/`, { method: 'DELETE' })
+      showToast(`Đã xóa đơn ${orderId}`, 'ok')
+      if (orderDetail?.id === orderId || orderDetail?.order_id === orderId) setOrderDetail(null)
+      loadOrders()
+    } catch (e) {
+      showToast(`Lỗi xóa: ${e.message}`, 'error')
+    }
+  }
+
+  async function chargeOrder(orderId) {
+    if (!confirm(`Xác nhận thanh toán đơn hàng ${orderId}?`)) return
+    try {
+      const data = await apiFetch('/api/orders/charge/', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ order_ids: [orderId] })
+      })
+      const state_val = data?.state
+      if (state_val === 'purchased') {
+        showToast(`✅ Thanh toán thành công đơn ${orderId}`, 'ok')
+      } else {
+        showToast(`Trạng thái: ${state_val || 'unknown'}`, 'info')
+      }
+      loadOrders()
+    } catch (e) {
+      showToast(`Lỗi charge: ${e.message}`, 'error')
+    }
+  }
+
+  async function submitOrder(e) {
+    e.preventDefault()
+    setOrderFormError('')
+    setOrderFormSuccess('')
+    if (!orderForm.sku.trim()) { setOrderFormError('Vui lòng nhập SKU'); return }
+    if (!orderForm.name.trim()) { setOrderFormError('Vui lòng nhập tên người nhận'); return }
+    if (!orderForm.address.trim()) { setOrderFormError('Vui lòng nhập địa chỉ'); return }
+    setOrderSubmitting(true)
+    try {
+      const payload = {
+        shipping: {
+          name: orderForm.name,
+          address: orderForm.address,
+          city: orderForm.city,
+          state: orderForm.state_,
+          country: orderForm.country || 'US',
+          postal_code: orderForm.postal_code,
+        },
+        items: [{
+          sku: orderForm.sku.trim(),
+          quantity: Number(orderForm.quantity) || 1,
+        }]
+      }
+      await apiFetch('/api/order/', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      })
+      setOrderFormSuccess('✅ Đặt hàng thành công!')
+      setOrderForm({ sku: '', quantity: 1, size: 'M', name: '', address: '', city: '', state_: '', country: 'US', postal_code: '' })
+      loadOrders()
+    } catch (e) {
+      setOrderFormError(e.message || 'Lỗi tạo đơn hàng')
+    } finally {
+      setOrderSubmitting(false)
+    }
   }
 
   async function apiFetch(path, init) {
@@ -900,10 +1013,52 @@ function App() {
                     <i className={`fa-solid ${minimized === 'canvas' ? 'fa-up-right-and-down-left-from-center' : 'fa-window-minimize'}`}></i>
                   </button>
                 </div>
+                {/* Canvas tab buttons */}
+                <div className="flex items-center gap-1.5 ml-auto">
+                  <button
+                    id="canvas-tab-compare"
+                    type="button"
+                    onClick={() => setCanvasTab('compare')}
+                    className={`px-3 py-1.5 rounded-xl text-xs font-semibold border transition ${
+                      canvasTab === 'compare'
+                        ? 'bg-brandBlue text-white border-brandBlue shadow-sm'
+                        : 'bg-white border-black/10 text-ink/70 hover:bg-appBg'
+                    }`}
+                  >
+                    <i className="fa-solid fa-industry mr-1"></i>Factory Comparison
+                  </button>
+                  <button
+                    id="canvas-tab-products"
+                    type="button"
+                    onClick={() => setCanvasTab('products')}
+                    className={`px-3 py-1.5 rounded-xl text-xs font-semibold border transition ${
+                      canvasTab === 'products'
+                        ? 'bg-brandBlue text-white border-brandBlue shadow-sm'
+                        : 'bg-white border-black/10 text-ink/70 hover:bg-appBg'
+                    }`}
+                  >
+                    <i className="fa-solid fa-box-open mr-1"></i>Product recommend
+                  </button>
+                  <button
+                    id="canvas-tab-orders"
+                    type="button"
+                    onClick={() => { setCanvasTab('orders'); loadOrders() }}
+                    className={`px-3 py-1.5 rounded-xl text-xs font-semibold border transition ${
+                      canvasTab === 'orders'
+                        ? 'bg-brandBlue text-white border-brandBlue shadow-sm'
+                        : 'bg-white border-black/10 text-ink/70 hover:bg-appBg'
+                    }`}
+                  >
+                    <i className="fa-solid fa-box mr-1"></i>📦 Orders
+                  </button>
+                </div>
               </div>
             </header>
 
             <div className="flex-1 overflow-y-auto nice-scrollbar bg-gradient-to-b from-white to-appBg/60 p-5" id="bp-canvas-content">
+
+              {/* ---- FACTORY COMPARISON TAB ---- */}
+              {canvasTab === 'compare' && (
               <div className={isCanvasCompact ? 'grid grid-cols-1 gap-4' : 'grid grid-cols-1 xl:grid-cols-3 gap-4'}>
                 <div className="xl:col-span-1 rounded-2xl bg-white border border-black/5 shadow-sm p-4">
                   <div className="flex items-start justify-between gap-3">
@@ -1069,7 +1224,271 @@ function App() {
                   </div>
                 </section>
               </div>
-            </div>
+              )}
+
+              {/* ---- PRODUCT RECOMMEND TAB ---- */}
+              {canvasTab === 'products' && (
+                <div>
+                  {products.length === 0 ? (
+                    <div className="flex flex-col items-center justify-center py-16 text-center">
+                      <div className="h-14 w-14 rounded-2xl bg-appBg border border-black/10 flex items-center justify-center text-2xl mb-4">📦</div>
+                      <div className="text-sm font-semibold text-ink/70">Chưa có sản phẩm nào</div>
+                      <div className="text-xs text-ink/50 mt-1">Hỏi agent để xem gợi ý sản phẩm</div>
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
+                      {products.map((p, idx) => {
+                        const id = p.id || p.short_code || ''
+                        const min = safeNumber(p.price_min)
+                        const max = safeNumber(p.price_max)
+                        const baseStr = min !== null
+                          ? (max !== null && max > min ? `$${min.toFixed(2)}–$${max.toFixed(2)}` : `$${min.toFixed(2)}`)
+                          : ''
+                        const partners = Array.isArray(p.partners) ? p.partners.filter(Boolean) : []
+                        return (
+                          <div key={id || idx} className="rounded-2xl border border-black/10 bg-white p-4 hover:shadow-sm transition">
+                            <div className="flex items-start gap-3">
+                              {p.thumbnail ? (
+                                <img className="h-12 w-12 rounded-xl object-cover border border-black/10" src={p.thumbnail} alt={p.name || ''} />
+                              ) : (
+                                <div className="h-12 w-12 rounded-xl bg-appBg border border-black/10 flex items-center justify-center text-ink/50">
+                                  <i className="fa-solid fa-shirt"></i>
+                                </div>
+                              )}
+                              <div className="min-w-0">
+                                <div className="text-xs font-bold text-ink/60">#{idx + 1}</div>
+                                <div className="text-sm font-extrabold leading-tight truncate">{p.name || 'N/A'}</div>
+                                <div className="text-xs text-ink/60 font-mono mt-0.5">{p.short_code || p.id || ''}</div>
+                                {baseStr ? <div className="text-xs text-ink/60 mt-1">Base: <span className="font-semibold">{baseStr}</span></div> : null}
+                              </div>
+                            </div>
+                            <div className="mt-3">
+                              <button
+                                className="w-full inline-flex items-center justify-center gap-2 px-3 py-2 rounded-xl bg-brandBlue text-white text-xs font-semibold hover:brightness-110 transition"
+                                onClick={() => handleSend(`Phân tích kỹ hơn ${p.name || p.short_code || ''}`)}
+                                type="button"
+                              >
+                                <i className="fa-solid fa-magnifying-glass"></i> Phân tích
+                              </button>
+                            </div>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* ---- ORDERS TAB ---- */}
+              {canvasTab === 'orders' && (
+                <div className="space-y-5">
+                  {/* Create Order Form */}
+                  <div className="rounded-2xl bg-white border border-black/5 shadow-sm p-5">
+                    <div className="flex items-center gap-2 mb-4">
+                      <div className="h-8 w-8 rounded-xl bg-brandBlue text-white flex items-center justify-center text-sm">
+                        <i className="fa-solid fa-plus"></i>
+                      </div>
+                      <div className="text-sm font-bold">Tạo đơn hàng mới</div>
+                    </div>
+                    <form onSubmit={submitOrder} className="space-y-3">
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <label className="text-xs font-semibold text-ink/60 block mb-1">SKU *</label>
+                          <input
+                            className="w-full rounded-xl border border-black/10 bg-appBg/40 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-brandBlue/20 focus:border-brandBlue/40"
+                            placeholder="USG5000-BLACK-M"
+                            value={orderForm.sku}
+                            onChange={e => setOrderForm(f => ({...f, sku: e.target.value}))}
+                          />
+                        </div>
+                        <div>
+                          <label className="text-xs font-semibold text-ink/60 block mb-1">Số lượng</label>
+                          <input
+                            type="number" min="1" max="100"
+                            className="w-full rounded-xl border border-black/10 bg-appBg/40 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-brandBlue/20"
+                            value={orderForm.quantity}
+                            onChange={e => setOrderForm(f => ({...f, quantity: e.target.value}))}
+                          />
+                        </div>
+                      </div>
+                      <div>
+                        <label className="text-xs font-semibold text-ink/60 block mb-1">Tên người nhận *</label>
+                        <input
+                          className="w-full rounded-xl border border-black/10 bg-appBg/40 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-brandBlue/20"
+                          placeholder="John Smith"
+                          value={orderForm.name}
+                          onChange={e => setOrderForm(f => ({...f, name: e.target.value}))}
+                        />
+                      </div>
+                      <div>
+                        <label className="text-xs font-semibold text-ink/60 block mb-1">Địa chỉ *</label>
+                        <input
+                          className="w-full rounded-xl border border-black/10 bg-appBg/40 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-brandBlue/20"
+                          placeholder="123 Main St"
+                          value={orderForm.address}
+                          onChange={e => setOrderForm(f => ({...f, address: e.target.value}))}
+                        />
+                      </div>
+                      <div className="grid grid-cols-3 gap-3">
+                        <div>
+                          <label className="text-xs font-semibold text-ink/60 block mb-1">City</label>
+                          <input
+                            className="w-full rounded-xl border border-black/10 bg-appBg/40 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-brandBlue/20"
+                            placeholder="New York"
+                            value={orderForm.city}
+                            onChange={e => setOrderForm(f => ({...f, city: e.target.value}))}
+                          />
+                        </div>
+                        <div>
+                          <label className="text-xs font-semibold text-ink/60 block mb-1">State</label>
+                          <input
+                            className="w-full rounded-xl border border-black/10 bg-appBg/40 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-brandBlue/20"
+                            placeholder="NY"
+                            value={orderForm.state_}
+                            onChange={e => setOrderForm(f => ({...f, state_: e.target.value}))}
+                          />
+                        </div>
+                        <div>
+                          <label className="text-xs font-semibold text-ink/60 block mb-1">ZIP</label>
+                          <input
+                            className="w-full rounded-xl border border-black/10 bg-appBg/40 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-brandBlue/20"
+                            placeholder="10001"
+                            value={orderForm.postal_code}
+                            onChange={e => setOrderForm(f => ({...f, postal_code: e.target.value}))}
+                          />
+                        </div>
+                      </div>
+                      {orderFormError && <div className="text-xs text-red-500 font-semibold">{orderFormError}</div>}
+                      {orderFormSuccess && <div className="text-xs text-green-600 font-semibold">{orderFormSuccess}</div>}
+                      <button
+                        type="submit"
+                        disabled={orderSubmitting}
+                        className="w-full py-2.5 rounded-xl bg-brandBlue text-white font-semibold text-sm hover:brightness-110 active:brightness-95 transition disabled:opacity-50"
+                      >
+                        {orderSubmitting ? 'Đang đặt hàng...' : '📦 Đặt hàng ngay'}
+                      </button>
+                    </form>
+                  </div>
+
+                  {/* Orders List */}
+                  <div className="rounded-2xl bg-white border border-black/5 shadow-sm p-5">
+                    <div className="flex items-center justify-between gap-3 mb-4">
+                      <div className="text-sm font-bold">📋 Danh sách đơn hàng</div>
+                      <button
+                        type="button"
+                        onClick={loadOrders}
+                        disabled={ordersLoading}
+                        className="inline-flex items-center gap-2 px-3 py-1.5 rounded-xl bg-appBg border border-black/10 text-xs font-semibold hover:bg-white transition disabled:opacity-50"
+                      >
+                        <i className={`fa-solid fa-rotate-right ${ordersLoading ? 'animate-spin' : ''}`}></i>
+                        {ordersLoading ? 'Đang tải...' : 'Refresh'}
+                      </button>
+                    </div>
+
+                    {ordersError && (
+                      <div className="rounded-xl bg-red-50 border border-red-100 px-4 py-3 text-sm text-red-600 mb-3">
+                        {ordersError}
+                      </div>
+                    )}
+
+                    {!ordersLoading && orders.length === 0 && !ordersError && (
+                      <div className="flex flex-col items-center justify-center py-10 text-center">
+                        <div className="text-3xl mb-3">📭</div>
+                        <div className="text-sm text-ink/60">Chưa có đơn hàng nào</div>
+                        <div className="text-xs text-ink/40 mt-1">Tạo đơn hàng đầu tiên ở trên</div>
+                      </div>
+                    )}
+
+                    <div className="space-y-3">
+                      {orders.map((order) => {
+                        const ordId = order?.id || order?.order_id || ''
+                        const orderStatus = order?.status || 'unknown'
+                        const isPaid = orderStatus === 'paid' || orderStatus === 'purchased' || orderStatus === 'processing'
+                        const total = order?.total || order?.amount || ''
+                        const itemCount = Array.isArray(order?.items) ? order.items.length : (order?.item_count || 0)
+                        const isSelected = orderDetail && (orderDetail?.id === ordId || orderDetail?.order_id === ordId)
+                        return (
+                          <div key={ordId} className={`rounded-xl border p-4 transition ${isSelected ? 'border-brandBlue/40 bg-brandBlue/5' : 'border-black/10 bg-white hover:shadow-sm'}`}>
+                            <div className="flex items-start justify-between gap-2">
+                              <div className="min-w-0">
+                                <div className="text-xs font-mono font-bold text-ink/80 truncate">{ordId || '—'}</div>
+                                <div className="flex items-center gap-2 mt-1">
+                                  <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-bold ${
+                                    isPaid ? 'bg-green-100 text-green-700' : 'bg-yellow-50 text-yellow-700 border border-yellow-200'
+                                  }`}>
+                                    {isPaid ? '✅ Paid' : '⏳ ' + orderStatus}
+                                  </span>
+                                  {total && <span className="text-xs text-ink/60 font-semibold">${total}</span>}
+                                  {itemCount > 0 && <span className="text-xs text-ink/50">{itemCount} item{itemCount > 1 ? 's' : ''}</span>}
+                                </div>
+                              </div>
+                              <div className="flex items-center gap-1.5 shrink-0">
+                                <button
+                                  type="button"
+                                  onClick={() => isSelected ? setOrderDetail(null) : loadOrderDetail(ordId)}
+                                  className="px-2.5 py-1.5 rounded-lg bg-appBg border border-black/10 text-xs font-semibold hover:bg-white transition"
+                                >
+                                  <i className="fa-solid fa-eye"></i>
+                                </button>
+                                {!isPaid && (
+                                  <>
+                                    <button
+                                      type="button"
+                                      onClick={() => chargeOrder(ordId)}
+                                      className="px-2.5 py-1.5 rounded-lg bg-brandBlue text-white text-xs font-semibold hover:brightness-110 transition"
+                                      title="Thanh toán"
+                                    >
+                                      <i className="fa-solid fa-credit-card"></i>
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => deleteOrder(ordId)}
+                                      className="px-2.5 py-1.5 rounded-lg bg-red-500 text-white text-xs font-semibold hover:brightness-110 transition"
+                                      title="Xóa"
+                                    >
+                                      <i className="fa-solid fa-trash"></i>
+                                    </button>
+                                  </>
+                                )}
+                              </div>
+                            </div>
+
+                            {/* Order detail inline */}
+                            {isSelected && (
+                              <div className="mt-3 pt-3 border-t border-black/5">
+                                {orderDetailLoading ? (
+                                  <div className="text-xs text-ink/60">Đang tải chi tiết...</div>
+                                ) : orderDetail ? (
+                                  <div className="space-y-2 text-xs">
+                                    {orderDetail.shipping && (
+                                      <div>
+                                        <span className="font-semibold text-ink/70">Giao tới:</span>{' '}
+                                        {[orderDetail.shipping.name, orderDetail.shipping.address, orderDetail.shipping.city, orderDetail.shipping.country].filter(Boolean).join(', ')}
+                                      </div>
+                                    )}
+                                    {Array.isArray(orderDetail.items) && orderDetail.items.length > 0 && (
+                                      <div>
+                                        <span className="font-semibold text-ink/70">Items:</span>{' '}
+                                        {orderDetail.items.map((item, i) => (
+                                          <span key={i} className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-appBg border border-black/10 mr-1 mb-1">
+                                            {item.sku} ×{item.quantity}
+                                          </span>
+                                        ))}
+                                      </div>
+                                    )}
+                                  </div>
+                                ) : null}
+                              </div>
+                            )}
+                          </div>
+                        )
+                      })}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+            </div>{/* end bp-canvas-content */}
 
             <footer className="px-5 py-3 border-t border-black/5 bg-white" id="bp-canvas-footer">
               <div className="flex flex-col sm:flex-row sm:items-center gap-2 justify-between">

@@ -747,6 +747,41 @@ def data_agent_node(state: AgentState) -> AgentState:
     task = state.get("task", "") or state.get("intent", "")
     criteria = state.get("extracted_criteria", {}) or {}
 
+
+def route_after_routing_validator(state: AgentState) -> str:
+    return state.get("validator_next", "data_agent")
+
+
+# ---------------------------------------------------------------------------
+# Zorin ask node (missing fields / general inquiry)
+# ---------------------------------------------------------------------------
+
+def zorin_ask_node(state: AgentState) -> AgentState:
+    intent = state.get("task", "") or state.get("intent", "")
+    missing_fields = state.get("missing_fields", []) or []
+    query = state.get("query", "")
+
+    # Nếu là general_inquiry → dùng LLM để trả lời thông minh hơn
+    if intent == "general_inquiry" and not missing_fields:
+        try:
+            response = _get_ask().respond(query=query)
+            return {**state, "response_msg": response}
+        except Exception as e:
+            logger.warning(f"ZorinAsk.respond failed: {e}")
+
+    # Nếu thiếu field → build clarification message
+    message = _get_ask().build_message(intent=intent, missing_fields=missing_fields)
+    return {**state, "response_msg": message}
+
+
+# ---------------------------------------------------------------------------
+# Data agent node
+# ---------------------------------------------------------------------------
+
+def data_agent_node(state: AgentState) -> AgentState:
+    task = state.get("task", "") or state.get("intent", "")
+    criteria = state.get("extracted_criteria", {}) or {}
+
     if task == "compare_product":
         payload = _data_agent.fetch_compare_products(criteria.get("product_names", []) or [])
     else:
@@ -767,11 +802,6 @@ def function_node(state: AgentState) -> AgentState:
     # --- Compare products ---
     if task == "compare_product":
         state = compare_node(state)
-        state = market_analysis_node(state)
-        state = inventory_analysis_node(state)
-        state = season_weather_node(state)
-        state = demand_analysis_node(state)
-        state = pricing_profit_node(state)
         state = persona_compatibility_node(state)
         return decision_engine_node(state)
 
@@ -786,7 +816,6 @@ def function_node(state: AgentState) -> AgentState:
         missing = state.get("missing_fields", []) or []
         if missing:
             return zorin_ask_node(state)
-        # Nếu đủ thông tin → hướng dẫn tạo đơn qua modal UI
         criteria = state.get("extracted_criteria", {}) or {}
         product_names = criteria.get("product_names", [])
         product_str = ", ".join(product_names) if product_names else "sản phẩm đã chọn"
@@ -794,7 +823,7 @@ def function_node(state: AgentState) -> AgentState:
             **state,
             "response_msg": (
                 f"✅ Mình đã nhận yêu cầu tạo đơn cho **{product_str}**.\n\n"
-                "Để tạo đơn hàng an toàn, hãy dùng nút **📦 Tạo đơn** xuất hiện bên trên câu trả lời.\n\n"
+                "Để tạo đơn hàng, hãy dùng tab **📦 Orders** ở panel bên phải.\n\n"
                 "Bạn cần cung cấp:\n"
                 "- **SKU sản phẩm** (ví dụ: USG5000)\n"
                 "- **Kích thước** (S, M, L, XL, ...)\n"
@@ -803,11 +832,27 @@ def function_node(state: AgentState) -> AgentState:
             ),
         }
 
-    # --- Product partner info: thông tin xưởng/partner của sản phẩm hiện tại ---
+    # --- List orders ---
+    if task == "list_orders":
+        return _handle_list_orders(state)
+
+    # --- Order detail ---
+    if task == "order_detail":
+        return _handle_order_detail(state)
+
+    # --- Delete order ---
+    if task == "delete_order":
+        return _handle_delete_order(state)
+
+    # --- Charge order ---
+    if task == "charge_order":
+        return _handle_charge_order(state)
+
+    # --- Product partner info ---
     if task == "product_partner_info":
         return _handle_product_partner_info(state)
 
-    # --- Product detail info: thông tin chi tiết của sản phẩm hiện tại ---
+    # --- Product detail info ---
     if task == "product_detail_info":
         return _handle_product_detail_info(state)
 
@@ -815,7 +860,7 @@ def function_node(state: AgentState) -> AgentState:
     if task == "other":
         return _handle_other_task(state)
 
-    # --- Catalog info: trả lời thông tin về catalog ---
+    # --- Catalog info ---
     if task == "catalog_info":
         return _handle_catalog_info(state)
 
@@ -842,10 +887,6 @@ def function_node(state: AgentState) -> AgentState:
             "scores": scores,
         }
     return state
-
-
-def _handle_catalog_info(state: AgentState) -> AgentState:
-    """Xử lý catalog_info intent - trả lời thông tin catalog thực từ API"""
     criteria = state.get("extracted_criteria", {}) or {}
     catalog_query_type = criteria.get("catalog_query_type", "general") or "general"
     query = state.get("query", "")
@@ -2049,3 +2090,150 @@ def memory_manager_node(state: AgentState) -> AgentState:
         "returned_objects": returned_objects,
         "object_store_snapshot": object_snapshot,
     }
+
+
+# ---------------------------------------------------------------------------
+# Order management handlers
+# ---------------------------------------------------------------------------
+
+def _handle_list_orders(state: AgentState) -> AgentState:
+    """Lấy danh sách đơn hàng từ BurgerPrints API"""
+    from agent.services import burgerprints as bp_api
+    query = state.get("query", "")
+    try:
+        result = bp_api.get_orders(page=1, limit=20)
+        data = result if isinstance(result, dict) else {}
+        orders = data.get("data", data.get("result", []))
+        if not isinstance(orders, list):
+            orders = []
+
+        if not orders:
+            msg = "📦 Hiện chưa có đơn hàng nào trong tài khoản của bạn."
+        else:
+            lines = [f"📦 **Danh sách đơn hàng** ({len(orders)} đơn gần nhất):\n"]
+            for i, order in enumerate(orders[:10], 1):
+                order_id = order.get("id") or order.get("order_id", "N/A")
+                status_val = order.get("status", "unknown")
+                total = order.get("total", order.get("amount", ""))
+                total_str = f" — **${total}**" if total else ""
+                lines.append(f"{i}. `{order_id}` | Status: **{status_val}**{total_str}")
+            lines.append(
+                "\n💡 Nhấn vào tab **📦 Orders** bên phải để xem chi tiết, charge hoặc xóa đơn hàng."
+            )
+            msg = "\n".join(lines)
+
+        return {**state, "response_msg": _localize_response_for_query(query, msg)}
+    except Exception as e:
+        logger.error(f"_handle_list_orders error: {e}")
+        return {
+            **state,
+            "response_msg": f"❌ Không thể lấy danh sách đơn hàng: {str(e)}\n\nHãy thử lại hoặc kiểm tra kết nối API.",
+        }
+
+
+def _handle_order_detail(state: AgentState) -> AgentState:
+    """Lấy chi tiết một đơn hàng cụ thể"""
+    from agent.services import burgerprints as bp_api
+    query = state.get("query", "")
+    criteria = state.get("extracted_criteria", {}) or {}
+    order_id = criteria.get("order_id", "").strip()
+
+    if not order_id:
+        return {
+            **state,
+            "response_msg": "⚠️ Bạn cần cung cấp **Order ID** để xem chi tiết đơn hàng.\n\nVí dụ: *Chi tiết đơn hàng A28756-CT-3161831*",
+        }
+    try:
+        result = bp_api.get_order_detail(order_id)
+        data = result.get("data", result) if isinstance(result, dict) else {}
+        status_val = data.get("status", "unknown")
+        total = data.get("total", data.get("amount", ""))
+        items = data.get("items", [])
+        shipping = data.get("shipping", {})
+
+        lines = [f"📋 **Chi tiết đơn hàng `{order_id}`**\n"]
+        lines.append(f"- **Status**: {status_val}")
+        if total:
+            lines.append(f"- **Tổng tiền**: ${total}")
+        if shipping:
+            name = shipping.get("name", "")
+            country = shipping.get("country", "")
+            if name or country:
+                lines.append(f"- **Giao tới**: {name} — {country}")
+        if items:
+            lines.append(f"- **Số items**: {len(items)}")
+            for item in items[:3]:
+                sku = item.get("sku", "N/A")
+                qty = item.get("quantity", 1)
+                lines.append(f"  • `{sku}` × {qty}")
+        msg = "\n".join(lines)
+        return {**state, "response_msg": _localize_response_for_query(query, msg)}
+    except Exception as e:
+        logger.error(f"_handle_order_detail error: {e}")
+        return {
+            **state,
+            "response_msg": f"❌ Không thể lấy chi tiết đơn hàng `{order_id}`: {str(e)}",
+        }
+
+
+def _handle_delete_order(state: AgentState) -> AgentState:
+    """Xóa đơn hàng (chỉ khi unpaid)"""
+    from agent.services import burgerprints as bp_api
+    query = state.get("query", "")
+    criteria = state.get("extracted_criteria", {}) or {}
+    order_id = criteria.get("order_id", "").strip()
+
+    if not order_id:
+        return {
+            **state,
+            "response_msg": "⚠️ Bạn cần cung cấp **Order ID** để xóa đơn hàng.\n\nChú ý: Chỉ xóa được đơn hàng ở trạng thái **unpaid**.",
+        }
+    try:
+        result = bp_api.delete_order(order_id)
+        is_success = result.get("is_success", False)
+        message = result.get("message", "")
+        if is_success:
+            msg = f"✅ **Đã xóa đơn hàng `{order_id}`** thành công.\n\n{message}"
+        else:
+            msg = f"❌ Không thể xóa đơn hàng `{order_id}`.\n\n{message}\n\nChú ý: Chỉ xóa được đơn hàng ở trạng thái **unpaid**."
+        return {**state, "response_msg": _localize_response_for_query(query, msg)}
+    except Exception as e:
+        logger.error(f"_handle_delete_order error: {e}")
+        return {
+            **state,
+            "response_msg": f"❌ Không thể xóa đơn hàng `{order_id}`: {str(e)}",
+        }
+
+
+def _handle_charge_order(state: AgentState) -> AgentState:
+    """Thanh toán đơn hàng"""
+    from agent.services import burgerprints as bp_api
+    query = state.get("query", "")
+    criteria = state.get("extracted_criteria", {}) or {}
+    order_id = criteria.get("order_id", "").strip()
+
+    if not order_id:
+        return {
+            **state,
+            "response_msg": "⚠️ Bạn cần cung cấp **Order ID** để thanh toán đơn hàng.\n\nVí dụ: *Thanh toán đơn hàng A28756-CT-3161831*",
+        }
+    try:
+        result = bp_api.charge_order([order_id])
+        state_val = result.get("state", "unknown")
+        reason = result.get("reason", {})
+        method = reason.get("method", "") if isinstance(reason, dict) else ""
+
+        if state_val == "purchased":
+            msg = f"✅ **Thanh toán thành công** đơn hàng `{order_id}`!\n\n- Phương thức: {method or 'balance'}\n- Trạng thái: **{state_val}**"
+        elif state_val == "pending":
+            msg = f"⏳ Đơn hàng `{order_id}` đang **xử lý thanh toán** (pending). Vui lòng kiểm tra lại sau."
+        else:
+            reason_msg = reason.get("message", str(reason)) if isinstance(reason, dict) else str(reason)
+            msg = f"❌ Thanh toán đơn `{order_id}` thất bại.\n\nLý do: {reason_msg}"
+        return {**state, "response_msg": _localize_response_for_query(query, msg)}
+    except Exception as e:
+        logger.error(f"_handle_charge_order error: {e}")
+        return {
+            **state,
+            "response_msg": f"❌ Không thể thanh toán đơn hàng `{order_id}`: {str(e)}",
+        }
