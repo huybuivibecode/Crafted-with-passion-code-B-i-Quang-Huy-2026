@@ -93,7 +93,7 @@ DJANGO_SECRET_KEY=django-insecure-burgerprints-agent-dev-key-change-in-prod
 DEBUG=True
 BURGER_PRINTS_API_KEY=your_burgerprints_api_key_here
 GEMINI_API_KEY=your_gemini_api_key_here
-GEMINI_MODEL=gemini-2.0-flash
+GEMINI_MODEL=gemini-3.1-flash-lite
 CATALOG_CACHE_TTL=300
 ```
 *(Hãy thay `your_gemini_api_key_here` và `your_burgerprints_api_key_here` bằng Key thực tế của bạn).*
