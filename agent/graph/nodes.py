@@ -953,15 +953,27 @@ def generate_response_node(state: AgentState) -> AgentState:
     error = state.get("error", "")
     criteria = state.get("extracted_criteria", {})
     validation_errors = state.get("validation_errors", [])
+    session_id = state.get("session_id", "")
 
     # Nếu đã có response_msg từ catalog_info, zorinask, hoặc create_order → bỏ qua
     if state.get("response_msg") and intent in ("create_order", "catalog_info", "general_inquiry"):
+        if session_id:
+            with _streams_lock:
+                q = _active_streams.get(session_id)
+            if q is not None:
+                q.put(state.get("response_msg"))
         return state
 
     if error and not scores and intent != "create_order":
+        err_msg = f"❌ Xin lỗi, đã xảy ra lỗi: {error}. Vui lòng thử lại sau."
+        if session_id:
+            with _streams_lock:
+                q = _active_streams.get(session_id)
+            if q is not None:
+                q.put(err_msg)
         return {
             **state,
-            "response_msg": f"❌ Xin lỗi, đã xảy ra lỗi: {error}. Vui lòng thử lại sau.",
+            "response_msg": err_msg,
             "reasons": [],
         }
 
@@ -990,6 +1002,7 @@ def generate_response_node(state: AgentState) -> AgentState:
         intent=intent,
         response=response,
         criteria=criteria,
+        session_id=session_id,
     )
 
     if polished_response:
@@ -1003,15 +1016,24 @@ def _polish_response_with_llm(
     intent: str,
     response: str,
     criteria: dict,
+    session_id: str = "",
 ) -> str:
     """Use LLM as a final editorial layer without changing factual content."""
     if not response or intent not in {"recommend_product", "compare_product", "check_stock"}:
+        if session_id:
+            with _streams_lock:
+                q = _active_streams.get(session_id)
+            if q is not None:
+                q.put(response)
         return response
+
+    q = None
+    if session_id:
+        with _streams_lock:
+            q = _active_streams.get(session_id)
 
     try:
         llm = _get_llm(temperature=0.05)
-        llm_structured = llm.with_structured_output(PolishedResponseOutput)
-
         criteria_text = json.dumps(criteria or {}, ensure_ascii=False)
         system_prompt = """Bạn là biên tập viên cao cấp chuyên chuẩn hóa phản hồi tư vấn sản phẩm POD cho khách hàng doanh nghiệp.
 
@@ -1057,8 +1079,7 @@ Quy tắc cấm:
 - Không chèn giải thích nội bộ như "dựa trên prompt", "theo mô hình", "tôi đã biên tập".
 
 Yêu cầu đầu ra:
-- Trả về duy nhất nội dung hoàn chỉnh trong trường response.
-- Nếu đầu vào đã khá tốt, vẫn phải tinh chỉnh để đạt chuẩn chuyên nghiệp cao hơn, không trả lại gần như nguyên văn theo kiểu đối phó."""
+- Trả về duy nhất nội dung hoàn chỉnh. Không wrap JSON. Trả về text thô (markdown)."""
 
         human_prompt = (
             f"Intent: {intent}\n"
@@ -1069,18 +1090,29 @@ Yêu cầu đầu ra:
             f"Phản hồi gốc cần biên tập lại:\n{response}"
         )
 
-        result: PolishedResponseOutput = _invoke_with_retry(
-            llm_structured,
-            [
-                SystemMessage(content=system_prompt),
-                HumanMessage(content=human_prompt),
-            ],
-        )
-        polished = (result.response or "").strip()
-        return polished or response
+        messages = [
+            SystemMessage(content=system_prompt),
+            HumanMessage(content=human_prompt),
+        ]
+
+        if q is not None:
+            chunks = []
+            for chunk in llm.stream(messages):
+                token = chunk.content
+                chunks.append(token)
+                q.put(token)
+            polished = "".join(chunks).strip()
+            return polished or response
+        else:
+            res = _invoke_with_retry(llm, messages)
+            polished = (res.content or "").strip()
+            return polished or response
     except Exception as e:
         logger.warning(f"LLM response polish failed: {e}")
+        if q is not None:
+            q.put(response)
         return response
+
 
 
 def _build_deterministic_response(

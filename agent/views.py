@@ -5,9 +5,10 @@ import uuid
 import json
 import re
 import logging
+import threading
 
 from django.shortcuts import render
-from django.http import JsonResponse
+from django.http import JsonResponse, StreamingHttpResponse
 from django.views import View
 from django.views.decorators.csrf import csrf_exempt
 from django.utils.decorators import method_decorator
@@ -135,6 +136,130 @@ class ChatAPIView(APIView):
             "error": result.get("error", ""),
             "node_trace": result.get("node_trace", []),
         })
+
+
+class StreamingChatAPIView(View):
+    """
+    POST /api/chat/stream/
+    Server-Sent Events streaming: stream response tokens dần dần.
+    Strategy: run handle_chat in a thread, then stream tokens as they generate,
+    finishing with a done event.
+    """
+
+    @method_decorator(csrf_exempt)
+    def dispatch(self, *args, **kwargs):
+        return super().dispatch(*args, **kwargs)
+
+    def post(self, request):
+        try:
+            body = json.loads(request.body or b'{}')
+        except Exception:
+            body = {}
+
+        query = str(body.get('query', '')).strip()
+        session_id = body.get('session_id', str(uuid.uuid4()))
+
+        if not query:
+            def err_gen():
+                yield 'data: ' + json.dumps({'type': 'error', 'message': 'Query empty'}) + '\n\n'
+            return StreamingHttpResponse(err_gen(), content_type='text/event-stream')
+
+        import queue
+        from agent.graph.nodes import register_stream_queue, unregister_stream_queue
+
+        q = queue.Queue()
+        register_stream_queue(session_id, q)
+
+        def sse_generator():
+            exc_holder = [None]
+            result = {}
+
+            def run():
+                try:
+                    res = handle_chat(query=query, session_id=session_id)
+                    result.update(res)
+
+                    # Compute final serialized payload once execution is complete
+                    response_msg = result.get('response_msg', '') or ''
+                    intent = result.get('intent', '')
+                    scores_raw = result.get('scores', [])
+
+                    criteria = result.get('extracted_criteria') or {}
+                    list_all = bool(criteria.get('list_all', False))
+                    try:
+                        m_match = re.search(r'\b(\d{1,3})\b\s*(?:sản\s*phẩm|sp)\b', (query or '').lower())
+                        requested_count = int(m_match.group(1)) if m_match else 0
+                    except Exception:
+                        requested_count = 0
+
+                    if requested_count > 0 and intent == 'recommend_product':
+                        product_limit = min(requested_count, 200)
+                    elif list_all:
+                        product_limit = 200
+                    elif intent == 'catalog_info':
+                        product_limit = 20
+                    else:
+                        product_limit = 5
+
+                    products = _serialize_scores(scores_raw)[:product_limit]
+                    winner = _serialize_product(result.get('winner'))
+                    alternatives = [_serialize_product(p) for p in result.get('alternatives', [])[:3]]
+                    follow_ups = _build_follow_ups(
+                        intent=intent, query=query,
+                        products=products, winner=winner, alternatives=alternatives,
+                    )
+
+                    done_payload = {
+                        'type': 'done',
+                        'session_id': session_id,
+                        'query': query,
+                        'response': response_msg,
+                        'intent': intent,
+                        'list_all': list_all,
+                        'total_products': len(scores_raw),
+                        'products': products,
+                        'reasons': result.get('reasons', []),
+                        'winner': winner,
+                        'alternatives': alternatives,
+                        'follow_ups': follow_ups,
+                        'applied_filters': result.get('applied_filters', []),
+                        'returned_objects': result.get('returned_objects', []),
+                        'error': result.get('error', ''),
+                    }
+                    q.put(done_payload)
+                except Exception as e:
+                    exc_holder[0] = e
+                    q.put({'type': 'error', 'message': str(e)})
+                finally:
+                    q.put(None)
+
+            t = threading.Thread(target=run, daemon=True)
+            t.start()
+
+            while True:
+                try:
+                    item = q.get(timeout=60)
+                    if item is None:
+                        break
+                    if isinstance(item, dict) and item.get('type') == 'error':
+                        yield 'data: ' + json.dumps(item) + '\n\n'
+                        break
+                    elif isinstance(item, dict) and item.get('type') == 'done':
+                        yield 'data: ' + json.dumps(item) + '\n\n'
+                    else:
+                        # Yield token
+                        yield 'data: ' + json.dumps({'type': 'token', 'text': item}) + '\n\n'
+                except queue.Empty:
+                    break
+
+            unregister_stream_queue(session_id)
+            yield 'data: [DONE]\n\n'
+
+        response = StreamingHttpResponse(sse_generator(), content_type='text/event-stream')
+        response['Cache-Control'] = 'no-cache'
+        response['X-Accel-Buffering'] = 'no'
+        return response
+
 
 
 class ProductsAPIView(APIView):

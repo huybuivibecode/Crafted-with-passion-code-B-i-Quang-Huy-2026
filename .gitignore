@@ -5,13 +5,15 @@ db.sqlite3
 *.sqlite3
 
 __pycache__/
-*.py[cod]
-*$py.class
+*.pyc
+*.pyo
+*.pyd
 
-.Python
 .venv/
 venv/
 env/
+.Python
+.sixth/
 
 .pytest_cache/
 .mypy_cache/
@@ -20,5 +22,17 @@ env/
 .DS_Store
 Thumbs.db
 
-.sixth/
+# Ignore frontend react development source project
+frontend/
 
+# Ignore test and draft python scripts
+test_api.py
+fix_jsx.py
+
+# Ignore draft markdown files
+API_order.md
+BP1_BurgerPrintsAgent_Instructions.md
+BurgerPrintAPI.md
+instruction.md
+*.md
+!README.md

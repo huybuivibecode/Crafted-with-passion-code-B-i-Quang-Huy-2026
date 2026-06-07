@@ -4,6 +4,7 @@ from agent import views
 # REST API routes
 urlpatterns = [
     path("chat/", views.ChatAPIView.as_view(), name="api-chat"),
+    path("chat/stream/", views.StreamingChatAPIView.as_view(), name="api-chat-stream"),
     path("products/", views.ProductsAPIView.as_view(), name="api-products"),
     path("products/out-of-stock/", views.OutOfStockAPIView.as_view(), name="api-out-of-stock"),
     path("products/<str:product_id>/", views.ProductDetailAPIView.as_view(), name="api-product-detail"),
